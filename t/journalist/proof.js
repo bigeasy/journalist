@@ -1,4 +1,5 @@
-var path = require('path'),
+var fs = require('fs'),
+    path = require('path'),
     rimraf = require('rimraf')
 
 module.exports = require('proof')(function (step) {
