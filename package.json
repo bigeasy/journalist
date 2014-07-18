@@ -22,6 +22,7 @@
     },
     "dependencies":
     {
+                        "cadence":          "0.0.37",
                         "magazine":         "0.0.12",
                         "staccato":         "0.0.1"
     },
