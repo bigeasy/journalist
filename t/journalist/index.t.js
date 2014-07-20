@@ -23,7 +23,10 @@ require('./proof')(3, function (step, tmp, assert) {
             entry.close('record', step())
         })
     }, function () {
-        step(null)
+        journal.open(path.join(tmp, 'data'), 4, step())
+    }, function (entry) {
+        entry.close('record', step())
+    }, function () {
         journalist = new Journalist('database', footer)
         journal = journalist.createJournal()
         journal.open(path.join(tmp, 'data'), 0, step())

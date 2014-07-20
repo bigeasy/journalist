@@ -21,20 +21,30 @@ Entry.prototype.write = cadence(function (step, buffer) {
     })
 })
 
+Error.stackTraceLimit = 999
+
+Entry.prototype._close = cadence(function (step) {
+    step(function () {
+        this._closing = []
+    //    this._journal._journalist._closer(this, this._position, step())
+    }, function () {
+        this._staccato.close(step())
+    }, function () {
+        if (this._closing.length) {
+            this._closing.pop()()
+        }
+        delete this._closing
+    })
+})
+
 Entry.prototype.close = cadence(function (step, stage) {
     assert.ok(!this._closing, 'already closing')
     this._open = false
-    this._closing = []
     if (this._journal._journalist._stage == stage) {
         step(function () {
-            this._journal._journalist._closer(this, this._position, step())
-        }, function () {
-            this._staccato.close(step())
+            this._close(step())
         }, function () {
             this._cartridge.remove()
-            if (this._closing.length) {
-                this._closing.pop()()
-            }
         })
     } else {
         this._cartridge.release()
@@ -54,17 +64,20 @@ Journal.prototype.open = cadence(function (step, filename, position) {
         var cartridge = this._magazine.hold(resolved, new Entry(this, resolved, position)),
             entry = cartridge.value
         entry._cartridge = cartridge
-        if (!entry.extant) {
-            this._open(entry, step())
-        } else if (object._closing) {
+        if (entry._closing) {
             step(function () {
                 object._closing.push(step())
             }, function () {
                 this.open(filename, position, step())
             })
         } else {
-            object._opened = true
-            return entry
+            entry._opened = true
+            if (!entry._extant) {
+                entry._extant = true
+                this._open(entry, step())
+            } else {
+                return entry
+            }
         }
     })
 })
@@ -94,22 +107,18 @@ Journalist.prototype.createJournal = function () {
 }
 
 Journalist.prototype.purge = cadence(function (step) {
-    var gather = [], count = this._cache.count
-    this._cache.purge(function (entry) {
-        gather.push({
-            magazine: entry._magazine,
-            filename: entry.value._filename
-        })
-        return --count  < this._count
-    }.bind(this))
-    gather.forEach(step([], function (record) {
-        var cartridge = record._magazine.hold(record.filename, null),
-            entry = cartridge.value
-        if (entry && !entry._opened) {
-            entry._closing = []
-        }
-        console.log(gather)
-    }))
+    var count = this._count, cache = this._cache, purge = cache.purge()
+    step([function () {
+        purge.release()
+    }], function () {
+        var loop = step(function () {
+            if (!purge.cartridge || cache.count <= count) return [ loop ]
+            purge.cartridge.value._close(step())
+        }, function () {
+            purge.cartridge.remove()
+            purge.next()
+        })()
+    })
 })
 
 module.exports = Journalist
