@@ -13,6 +13,15 @@ function Entry (journal, filename, position) {
     this._opened = true
 }
 
+Entry.prototype._open = cadence(function (step) {
+    this._staccato = new Staccato(fs.createWriteStream(this._filename, {
+        flags: 'w+',
+        mode: 0644,
+        start: this._position
+    }), true)
+    this._staccato.ready(step())
+})
+
 Entry.prototype.write = cadence(function (step, buffer) {
     step(function () {
         this._staccato.write(buffer, step())
@@ -21,19 +30,14 @@ Entry.prototype.write = cadence(function (step, buffer) {
     })
 })
 
-Error.stackTraceLimit = 999
-
 Entry.prototype._close = cadence(function (step) {
     step(function () {
         this._closing = []
-    //    this._journal._journalist._closer(this, this._position, step())
+        this._journal._journalist._closer(this, this._position, step())
     }, function () {
         this._staccato.close(step())
     }, function () {
-        if (this._closing.length) {
-            this._closing.pop()()
-        }
-        delete this._closing
+        return [ this._closing ]
     })
 })
 
@@ -60,38 +64,28 @@ Journal.prototype.open = cadence(function (step, filename, position) {
     step(function () {
         fs.realpath(path.dirname(filename), step())
     }, function (dir) {
-        var resolved = path.join(dir, path.basename(filename))
-        var cartridge = this._magazine.hold(resolved, new Entry(this, resolved, position)),
+        var cartridge = this._magazine.hold(filename, new Entry(this, filename, position)),
             entry = cartridge.value
         entry._cartridge = cartridge
         if (entry._closing) {
             step(function () {
-                object._closing.push(step())
+                entry._closing.push(step())
+                cartridge.release()
+                this._waiting && this._waiting()
             }, function () {
                 this.open(filename, position, step())
             })
         } else {
-            entry._opened = true
-            if (!entry._extant) {
-                entry._extant = true
-                this._open(entry, step())
-            } else {
+            step(function () {
+                entry._opened = true
+                if (!entry._extant) {
+                    entry._extant = true
+                    entry._open(step())
+                }
+            }, function () {
                 return entry
-            }
+            })
         }
-    })
-})
-
-Journal.prototype._open = cadence(function (step, entry) {
-    step(function () {
-        entry._staccato = new Staccato(fs.createWriteStream(entry._filename, {
-            flags: 'w+',
-            mode: 0644,
-            start: entry._position
-        }), true)
-        entry._staccato.ready(step())
-    }, function () {
-        return entry
     })
 })
 
@@ -114,9 +108,10 @@ Journalist.prototype.purge = cadence(function (step) {
         var loop = step(function () {
             if (!purge.cartridge || cache.count <= count) return [ loop ]
             purge.cartridge.value._close(step())
-        }, function () {
+        }, function (closing) {
             purge.cartridge.remove()
             purge.next()
+            closing.length && closing.pop()()
         })()
     })
 })
