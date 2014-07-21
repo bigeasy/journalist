@@ -14,7 +14,7 @@ require('./proof')(4, function (step, tmp, assert) {
         if (pause) pause = resume
         else resume()
     })
-    var journalist = new Journalist('record', footer)
+    var journalist = new Journalist('entry', footer)
     assert(journalist, 'journalist created')
     var journal = journalist.createJournal()
     assert(journal, 'journal created')
@@ -27,12 +27,12 @@ require('./proof')(4, function (step, tmp, assert) {
             entry.write(buffer, step())
         }, function (position) {
             assert(position, 4, 'position')
-            entry.close('record', step())
+            entry.close('entry', step())
         })
     }, function () {
         journal.open(path.join(tmp, 'data'), 4, step())
     }, function (entry) {
-        entry.close('record', step())
+        entry.close('entry', step())
     }, function () {
         journalist = new Journalist('database', footer)
         journal = journalist.createJournal()
@@ -42,7 +42,7 @@ require('./proof')(4, function (step, tmp, assert) {
         step(function () {
             entry.write(buffer, step())
         }, function (position) {
-            entry.close('record', step())
+            entry.close('entry', step())
             pause = true
             step(function () {
                 journalist.purge(step())
@@ -54,7 +54,7 @@ require('./proof')(4, function (step, tmp, assert) {
                 journal.open(path.join(tmp, 'data'), 4, step())
             }, function (entry) {
                 order.push('open')
-                entry.close('record', step())
+                entry.close('entry', step())
             })
         }, function () {
             assert(order, [ 'purge', 'open' ], 'purge then open')
