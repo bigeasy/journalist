@@ -14,7 +14,7 @@ require('./proof')(4, function (step, tmp, assert) {
         if (pause) pause = resume
         else resume()
     })
-    var journalist = new Journalist('entry', footer)
+    var journalist = new Journalist({ stage: 'entry', count: 1 })
     assert(journalist, 'journalist created')
     var journal = journalist.createJournal()
     assert(journal, 'journal created')
@@ -34,7 +34,7 @@ require('./proof')(4, function (step, tmp, assert) {
     }, function (entry) {
         entry.close('entry', step())
     }, function () {
-        journalist = new Journalist('journal', footer)
+        journalist = new Journalist({ stage: 'journal', closer: footer })
         journal = journalist.createJournal()
         journal.open(path.join(tmp, 'data'), 0, step())
     }, function (entry) {

@@ -115,11 +115,11 @@ Journal.prototype.close = cadence(function (step, stage) {
     }
 })
 
-function Journalist (stage, closer, cache) {
-    this._cache = cache ||(new Cache)
-    this._stage = stage
-    this._closer = closer
-    this._count = 0
+function Journalist (options) {
+    this._stage = options.stage
+    this._cache = options.cache ||(new Cache)
+    this._closer = options.closer || function () { arguments[2]() }
+    this._count = options.count || 0
 }
 
 Journalist.prototype.createJournal = function () {
