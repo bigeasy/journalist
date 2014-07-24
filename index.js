@@ -3,12 +3,14 @@ var fs = require('fs'),
     assert = require('assert'),
     cadence = require('cadence'),
     Staccato = require('staccato'),
-    Cache = require('magazine')
+    Cache = require('magazine'),
+    slice = [].slice
 
-function Entry (journal, filename, position) {
+function Entry (journal, filename, position, vargs) {
     this._journal = journal
     this._filename = filename
     this._position = position
+    this._vargs = vargs
     this._extant = false
     this._opened = true
 }
@@ -33,7 +35,7 @@ Entry.prototype.write = cadence(function (step, buffer) {
 Entry.prototype._close = cadence(function (step) {
     step(function () {
         this._closing = []
-        this._journal._journalist._closer(this, this._position, step())
+        this._journal._journalist._closer.apply(null, [ this, this._position ].concat(this._vargs, step()))
     }, function () {
         this._staccato.close(step())
     }, function () {
@@ -61,10 +63,11 @@ function Journal (journalist, magazine) {
 }
 
 Journal.prototype.open = cadence(function (step, filename, position) {
+    var vargs = slice.call(arguments, 3)
     step(function () {
         fs.realpath(path.dirname(filename), step())
     }, function (dir) {
-        var cartridge = this._magazine.hold(filename, new Entry(this, filename, position)),
+        var cartridge = this._magazine.hold(filename, new Entry(this, filename, position, vargs)),
             entry = cartridge.value
         entry._cartridge = cartridge
         if (entry._closing) {
@@ -73,7 +76,7 @@ Journal.prototype.open = cadence(function (step, filename, position) {
                 cartridge.release()
                 this._waiting && this._waiting()
             }, function () {
-                this.open(filename, position, step())
+                this.open.apply(this, [ filename, position ].concat(vargs, step()))
             })
         } else {
             step(function () {
@@ -118,7 +121,7 @@ Journal.prototype.close = cadence(function (step, stage) {
 function Journalist (options) {
     this._stage = options.stage
     this._cache = options.cache ||(new Cache)
-    this._closer = options.closer || function () { arguments[2]() }
+    this._closer = options.closer || function () { slice.call(arguments).pop()() }
     this._count = options.count || 0
 }
 
