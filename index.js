@@ -17,7 +17,7 @@ function Entry (journal, filename, position, vargs) {
 
 Entry.prototype._open = cadence(function (step) {
     this._staccato = new Staccato(fs.createWriteStream(this._filename, {
-        flags: 'w+',
+        flags: this._position == 0 ? 'w+' : 'r+',
         mode: 0644,
         start: this._position
     }), true)
