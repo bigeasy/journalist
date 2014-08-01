@@ -22,7 +22,7 @@ require('./proof')(6, function (step, tmp, assert) {
     var buffer = new Buffer(4)
     buffer.writeUInt32BE(0xaaaaaaaa, 0)
     step(function () {
-        journal.open(path.join(tmp, 'data'), 0, 1, step())
+        journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
     }, function (entry) {
         step(function () {
             entry.write(buffer, step())
@@ -31,13 +31,13 @@ require('./proof')(6, function (step, tmp, assert) {
             entry.close('entry', step())
         })
     }, function () {
-        journal.open(path.join(tmp, 'data'), 4, 1, step())
+        journal.open(path.join(tmp, 'data'), 4, 1).ready(step())
     }, function (entry) {
         entry.close('entry', step())
     }, function () {
         journalist = new Journalist({ stage: 'journal', closer: footer })
         journal = journalist.createJournal()
-        journal.open(path.join(tmp, 'data'), 0, 1, step())
+        journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
     }, function (entry) {
         var order = []
         step(function () {
@@ -52,7 +52,7 @@ require('./proof')(6, function (step, tmp, assert) {
                 order.push('purge')
             })
             step(function (filename) {
-                journal.open(path.join(tmp, 'data'), 4, 1, step())
+                journal.open(path.join(tmp, 'data'), 4, 1).ready(step())
             }, function (entry) {
                 order.push('open')
                 entry.close('entry', step())
@@ -61,11 +61,11 @@ require('./proof')(6, function (step, tmp, assert) {
             assert(order, [ 'purge', 'open' ], 'purge then open')
         })
     }, function () {
-        journal.open(path.join(tmp, 'data'), 0, 1, step())
+        journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
     }, function (entry) {
         entry.close('entry', step())
     }, function () {
-        journal.open(path.join(tmp, 'data'), 0, 1, step())
+        journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
     }, function (entry) {
         entry.close('entry', step())
     }, function () {

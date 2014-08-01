@@ -12,16 +12,35 @@ function Entry (journal, filename, position, vargs) {
     this._position = position
     this._vargs = vargs
     this._extant = false
-    this._opened = true
 }
 
-Entry.prototype._open = cadence(function (step) {
-    this._staccato = new Staccato(fs.createWriteStream(this._filename, {
-        flags: this._position == 0 ? 'w+' : 'r+',
-        mode: 0644,
-        start: this._position
-    }), true)
-    this._staccato.ready(step())
+Entry.prototype.ready = cadence(function (step) {
+    if (this._closing) {
+        step(function () {
+            this._closing.push(step())
+            this._cartridge.release()
+        console.log('here', this._closing)
+            console.log(this._journal._waiting)
+            this._journal._waiting && this._journal._waiting()
+        }, function () {
+            var vars = [ this._filename, this._position ].concat(this._vargs)
+            this._journal._open(this).ready(step())
+        })
+    } else {
+        step(function () {
+            if (!this._extant) {
+                this._extant = true
+                this._staccato = new Staccato(fs.createWriteStream(this._filename, {
+                    flags: this._position == 0 ? 'w+' : 'r+',
+                    mode: 0644,
+                    start: this._position
+                }), true)
+                this._staccato.ready(step())
+            }
+        }, function () {
+            return this
+        })
+    }
 })
 
 Entry.prototype.write = cadence(function (step, buffer) {
@@ -34,18 +53,21 @@ Entry.prototype.write = cadence(function (step, buffer) {
 
 Entry.prototype._close = cadence(function (step) {
     step(function () {
+        var vargs = [ this, this._position ].concat(this._vargs)
         this._closing = []
-        this._journal._journalist._closer.apply(null, [ this, this._position ].concat(this._vargs, step()))
+        this._journal._journalist._closer.apply(null, vargs.concat(step()))
     }, function () {
         this._staccato.close(step())
     }, function () {
-        return [ this._closing ]
+        var closing = this._closing
+        delete this._extant
+        delete this._closing
+        return [ closing ]
     })
 })
 
 Entry.prototype.close = cadence(function (step, stage) {
     assert.ok(!this._closing, 'already closing')
-    this._open = false
     if (this._journal._journalist._stage == stage) {
         step(function () {
             this._close(step())
@@ -62,35 +84,18 @@ function Journal (journalist, magazine) {
     this._magazine = magazine
 }
 
-Journal.prototype.open = cadence(function (step, filename, position) {
-    var vargs = slice.call(arguments, 3)
-    step(function () {
-        fs.realpath(path.dirname(filename), step())
-    }, function (dir) {
-        var cartridge = this._magazine.hold(filename, new Entry(this, filename, position, vargs)),
-            entry = cartridge.value
-        entry._cartridge = cartridge
-        if (entry._closing) {
-            step(function () {
-                entry._closing.push(step())
-                cartridge.release()
-                this._waiting && this._waiting()
-            }, function () {
-                this.open.apply(this, [ filename, position ].concat(vargs, step()))
-            })
-        } else {
-            step(function () {
-                entry._opened = true
-                if (!entry._extant) {
-                    entry._extant = true
-                    entry._open(step())
-                }
-            }, function () {
-                return entry
-            })
-        }
-    })
-})
+Journal.prototype.open = function (filename, position) {
+    var vargs = slice.call(arguments, 2)
+    var entry = new Entry(this, filename, position, vargs)
+    return this._open(entry)
+}
+
+Journal.prototype._open = function (entry) {
+    var cartridge = this._magazine.hold(entry._filename, entry),
+        entry = cartridge.value
+    entry._cartridge = cartridge
+    return entry
+}
 
 var purge = cadence(function (step, container, count) {
     var purge = container.purge()
