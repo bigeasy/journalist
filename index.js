@@ -19,9 +19,6 @@ Entry.prototype.ready = cadence(function (step) {
         step(function () {
             this._closing.push(step())
             this._cartridge.release()
-        console.log('here', this._closing)
-            console.log(this._journal._waiting)
-            this._journal._waiting && this._journal._waiting()
         }, function () {
             var vars = [ this._filename, this._position ].concat(this._vargs)
             this._journal._open(this).ready(step())

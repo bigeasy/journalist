@@ -3,17 +3,11 @@ require('./proof')(6, function (step, tmp, assert) {
         path = require('path'),
         cadence = require('cadence'),
         Journalist = require('../..')
-    var pause, extraCount = 0, footer = cadence(function (step, entry, position, extra) {
-        assert(extra, 1, 'extra ' + (++extraCount))
-        var callback = step()
-        function resume () {
-            pause = false
-            var buffer = new Buffer(4)
-            buffer.writeUInt32BE(4, 0)
-            entry.write(buffer, callback)
-        }
-        if (pause) pause = resume
-        else resume()
+    var footerCount = 0, footer = cadence(function (step, entry, position, extra) {
+        assert(extra, 1, 'footer ' + (++footerCount))
+        var buffer = new Buffer(4)
+        buffer.writeUInt32BE(4, 0)
+        entry.write(buffer, step())
     })
     var journalist = new Journalist({ stage: 'entry', count: 1 })
     assert(journalist, 'journalist created')
@@ -44,10 +38,8 @@ require('./proof')(6, function (step, tmp, assert) {
             entry.write(buffer, step())
         }, function (position) {
             entry.close('entry', step())
-            pause = true
             step(function () {
                 journalist.purge(step())
-                journal._waiting = pause
             }, function () {
                 order.push('purge')
             })
