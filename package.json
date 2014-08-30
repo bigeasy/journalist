@@ -1,6 +1,6 @@
 {
     "name":             "journalist",
-    "version":          "0.0.4",
+    "version":          "0.0.5",
     "author":           "Alan Gutierrez <alan@prettyrobots.com>",
     "description":      "Maintain a cache of objects that write database pages to file.",
     "keywords":
