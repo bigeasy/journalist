@@ -48,11 +48,14 @@ Entry.prototype.write = cadence(function (step, buffer) {
     })
 })
 
-Entry.prototype._close = cadence(function (step) {
+Entry.prototype._close = cadence(function (step, footer) {
     step(function () {
-        var vargs = [ this, this._position ].concat(this._vargs)
+        this._closed = true
         this._closing = []
-        this._journal._journalist._closer.apply(null, vargs.concat(step()))
+        if (footer) {
+            var vargs = [ this, this._position ].concat(this._vargs)
+            this._journal._journalist._closer.apply(null, vargs.concat(step()))
+        }
     }, function () {
         this._staccato.close(step())
     }, function () {
@@ -63,11 +66,21 @@ Entry.prototype._close = cadence(function (step) {
     })
 })
 
+Entry.prototype.scram = cadence(function (step) {
+    if (!this._closed) {
+        step(function () {
+            this._close(false, step())
+        }, function () {
+            this._cartridge.remove()
+        })
+    }
+})
+
 Entry.prototype.close = cadence(function (step, stage) {
     assert.ok(!this._closing, 'already closing')
     if (this._journal._journalist._stage == stage) {
         step(function () {
-            this._close(step())
+            this._close(true, step())
         }, function () {
             this._cartridge.remove()
         })
@@ -101,7 +114,7 @@ var purge = cadence(function (step, container, count) {
     }], function () {
         var loop = step(function () {
             if (!purge.cartridge || container.count <= count) return [ loop ]
-            purge.cartridge.value._close(step())
+            purge.cartridge.value._close(true, step())
         }, function (closing) {
             purge.cartridge.remove()
             purge.next()

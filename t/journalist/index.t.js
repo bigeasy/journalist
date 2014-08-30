@@ -64,5 +64,10 @@ require('./proof')(6, function (step, tmp, assert) {
         journal.close('other', step())
     }, function () {
         journal.close('journal', step())
+    }, function () {
+        journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
+    }, function (entry) {
+        entry.scram(step())
+        entry.scram(step())
     })
 })
