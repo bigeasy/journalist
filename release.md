@@ -1,8 +1,3 @@
 ### Issue by Issue
 
- * Upgrade Staccato to 0.0.3. #30.
- * Upgrade Cadence to 0.0.41. #29.
- * Upgrade Proof to 0.0.48. #28.
- * Upgrade Cadence to 0.0.40. #26.
- * Upgrade Staccato to 0.0.2. #25.
- * Upgrade Proof to 0.0.47. #24.
+ * Upgrade Cadence to 0.0.42. #32.
