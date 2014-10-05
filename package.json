@@ -28,8 +28,9 @@
     },
     "devDependencies":
     {
-                        "proof":            "0.0.48",
-                        "rimraf":           "2.2.8"
+                        "proof":            "0.0.50",
+                        "rimraf":           "2.2.8",
+                        "mkdirp":           "0.5.0"
     },
     "scripts":
     {

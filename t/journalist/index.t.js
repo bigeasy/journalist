@@ -1,8 +1,19 @@
-require('./proof')(6, function (step, tmp, assert) {
+require('proof')(6, require('cadence')(function (step, assert) {
     var fs = require('fs'),
+        rimraf = require('rimraf'),
+        mkdirp = require('mkdirp'),
         path = require('path'),
         cadence = require('cadence'),
-        Journalist = require('../..')
+        Journalist = require('../..'),
+        tmp = path.join(__dirname, 'tmp')
+    var cleanup = cadence(function (step) {
+        var rimraf = require('rimraf')
+        step([function () {
+            rimraf(tmp, step())
+        }, function (_, error) {
+            if (error.code != "ENOENT") throw error
+        }])
+    })
     var footerCount = 0, footer = cadence(function (step, entry, position, extra) {
         assert(extra, 1, 'footer ' + (++footerCount))
         var buffer = new Buffer(4)
@@ -16,6 +27,10 @@ require('./proof')(6, function (step, tmp, assert) {
     var buffer = new Buffer(4)
     buffer.writeUInt32BE(0xaaaaaaaa, 0)
     step(function () {
+        cleanup(step())
+    }, function () {
+        mkdirp(tmp, 0755, step())
+    }, function () {
         journal.open(path.join(tmp, 'data'), 0, 1).ready(step())
     }, function (entry) {
         step(function () {
@@ -69,5 +84,9 @@ require('./proof')(6, function (step, tmp, assert) {
     }, function (entry) {
         entry.scram(step())
         entry.scram(step())
+    }, function () {
+        if (!('UNTIDY' in process.env)) {
+            cleanup(step())
+        }
     })
-})
+}))
