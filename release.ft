@@ -1,5 +1,6 @@
 ### Issue by Issue
 
+ * Use a `prove` named function in tests. #43.
  * Rename `step` to `async`. #42.
  * Rename main module to `journalist.t.js`. #41.
  * Upgrade to Staccato 0.0.6. #40.

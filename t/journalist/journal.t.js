@@ -1,4 +1,6 @@
-require('proof')(6, require('cadence')(function (async, assert) {
+require('proof')(6, require('cadence')(prove))
+
+function prove (async, assert) {
     var fs = require('fs'),
         rimraf = require('rimraf'),
         mkdirp = require('mkdirp'),
@@ -89,4 +91,4 @@ require('proof')(6, require('cadence')(function (async, assert) {
             cleanup(async())
         }
     })
-}))
+}
