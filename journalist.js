@@ -14,17 +14,17 @@ function Entry (journal, filename, position, vargs) {
     this._extant = false
 }
 
-Entry.prototype.ready = cadence(function (step) {
+Entry.prototype.ready = cadence(function (async) {
     if (this._closing) {
-        step(function () {
-            this._closing.push(step())
+        async(function () {
+            this._closing.push(async())
             this._cartridge.release()
         }, function () {
             var vars = [ this._filename, this._position ].concat(this._vargs)
-            this._journal._open(this).ready(step())
+            this._journal._open(this).ready(async())
         })
     } else {
-        step(function () {
+        async(function () {
             if (!this._extant) {
                 this._extant = true
                 this._staccato = new Staccato(fs.createWriteStream(this._filename, {
@@ -32,7 +32,7 @@ Entry.prototype.ready = cadence(function (step) {
                     mode: 0644,
                     start: this._position
                 }), true)
-                this._staccato.ready(step())
+                this._staccato.ready(async())
             }
         }, function () {
             return this
@@ -40,24 +40,24 @@ Entry.prototype.ready = cadence(function (step) {
     }
 })
 
-Entry.prototype.write = cadence(function (step, buffer) {
-    step(function () {
-        this._staccato.write(buffer, step())
+Entry.prototype.write = cadence(function (async, buffer) {
+    async(function () {
+        this._staccato.write(buffer, async())
     }, function () {
         return this._position += buffer.length
     })
 })
 
-Entry.prototype._close = cadence(function (step, footer) {
-    step(function () {
+Entry.prototype._close = cadence(function (async, footer) {
+    async(function () {
         this._closed = true
         this._closing = []
         if (footer) {
             var vargs = [ this, this._position ].concat(this._vargs)
-            this._journal._journalist._closer.apply(null, vargs.concat(step()))
+            this._journal._journalist._closer.apply(null, vargs.concat(async()))
         }
     }, function () {
-        this._staccato.close(step())
+        this._staccato.close(async())
     }, function () {
         var closing = this._closing
         delete this._extant
@@ -66,21 +66,21 @@ Entry.prototype._close = cadence(function (step, footer) {
     })
 })
 
-Entry.prototype.scram = cadence(function (step) {
+Entry.prototype.scram = cadence(function (async) {
     if (!this._closed) {
-        step(function () {
-            this._close(false, step())
+        async(function () {
+            this._close(false, async())
         }, function () {
             this._cartridge.remove()
         })
     }
 })
 
-Entry.prototype.close = cadence(function (step, stage) {
+Entry.prototype.close = cadence(function (async, stage) {
     assert.ok(!this._closing, 'already closing')
     if (this._journal._journalist._stage == stage) {
-        step(function () {
-            this._close(true, step())
+        async(function () {
+            this._close(true, async())
         }, function () {
             this._cartridge.remove()
         })
@@ -107,14 +107,14 @@ Journal.prototype._open = function (entry) {
     return entry
 }
 
-var purge = cadence(function (step, container, count) {
+var purge = cadence(function (async, container, count) {
     var purge = container.purge()
-    step([function () {
+    async([function () {
         purge.release()
     }], function () {
-        var loop = step(function () {
+        var loop = async(function () {
             if (!purge.cartridge || container.count <= count) return [ loop ]
-            purge.cartridge.value._close(true, step())
+            purge.cartridge.value._close(true, async())
         }, function (closing) {
             purge.cartridge.remove()
             purge.next()
@@ -123,10 +123,10 @@ var purge = cadence(function (step, container, count) {
     })
 })
 
-Journal.prototype.close = cadence(function (step, stage) {
+Journal.prototype.close = cadence(function (async, stage) {
     if (stage == this._journalist._stage) {
-        step(function () {
-            purge(this._magazine, 0, step())
+        async(function () {
+            purge(this._magazine, 0, async())
         }, function () {
             assert.equal(this._magazine.count, 0, 'locks held at close')
         })
@@ -144,8 +144,8 @@ Journalist.prototype.createJournal = function () {
     return new Journal(this, this._cache.createMagazine())
 }
 
-Journalist.prototype.purge = cadence(function (step) {
-    purge(this._cache, this._count, step())
+Journalist.prototype.purge = cadence(function (async) {
+    purge(this._cache, this._count, async())
 })
 
 module.exports = Journalist
