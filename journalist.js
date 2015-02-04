@@ -1,7 +1,7 @@
 var fs = require('fs'),
     path = require('path'),
     assert = require('assert'),
-    cadence = require('cadence'),
+    cadence = require('cadence/redux'),
     Staccato = require('staccato'),
     Cache = require('magazine'),
     slice = [].slice
