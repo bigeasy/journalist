@@ -1,5 +1,6 @@
 ### Issue by Issue
 
+ * Rename main module to `journalist.t.js`. #41.
  * Upgrade to Staccato 0.0.6. #40.
  * Upgrade Proof to 0.0.50. #38.
  * Upgrade Staccato to 0.0.5. #36.
