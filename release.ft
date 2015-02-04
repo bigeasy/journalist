@@ -1,5 +1,6 @@
 ### Issue by Issue
 
+ * Update license dates. #45.
  * Upgrade to Cadence Redux. #44.
  * Use a `prove` named function in tests. #43.
  * Rename `step` to `async`. #42.
