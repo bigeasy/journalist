@@ -27,7 +27,7 @@
     "devDependencies":
     {
                             "mkdirp":                       "0.5.0",
-                            "proof":                        "0.0.50",
+                            "proof":                        "1.2.x",
                             "rimraf":                       "2.2.8"
     },
     "main":                 "journalist.js",
