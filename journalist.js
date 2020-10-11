@@ -43,7 +43,7 @@ const rescue = require('rescue')
 class Journalist {
     static Error = Interrupt.create('Journalist.Error')
 
-    constructor (directory, { tmp = 'commit', prepare = [] } = {}) {
+    constructor (directory, { tmp, prepare }) {
         assert(typeof directory == 'string')
         this._index = 0
         this.directory = directory
@@ -54,6 +54,10 @@ class Journalist {
             path: path.join(directory, tmp)
         }
         this.__prepare = prepare
+    }
+
+    async _create () {
+        await fs.mkdir(this._tmp.path, { recursive: true })
     }
 
     // TODO Should be a hash of specific files to filter, not a regex.
@@ -309,4 +313,8 @@ class Journalist {
     }
 }
 
-module.exports = Journalist
+exports.create = async function (directory, { tmp = 'commit', prepare = [] } = {}) {
+    const journalist = new Journalist(directory, { tmp, prepare })
+    await journalist._create()
+    return journalist
+}

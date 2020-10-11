@@ -9,7 +9,7 @@ require('proof')(3, async okay => {
     async function createCommit () {
         await fs.rmdir(directory, { recursive: true })
         // TODO Make this `async` so we can create the directory.
-        return new Journalist(directory)
+        return await Journalist.create(directory)
     }
 
     async function create (directory, structure) {
