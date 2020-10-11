@@ -1,17 +1,20 @@
-Journalist
+[![Actions Status](https://github.com/bigeasy/journalist/workflows/Node%20CI/badge.svg)](https://github.com/bigeasy/journalist/actions)
+[![codecov](https://codecov.io/gh/bigeasy/journalist/branch/master/graph/badge.svg)](https://codecov.io/gh/bigeasy/journalist)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Maintain a cache of objects that write database pages to file.
+Journaled file system operations that form a transaction.
 
-    Discussion:     http://bigeasy.github.io/journalist/issues/1
+| What          | Where                                             |
+| --- | --- |
+| Discussion    | https://github.com/bigeasy/journalist/issues/1    |
+| Documentation | https://bigeasy.github.io/journalist              |
+| Source        | https://github.com/bigeasy/journalist             |
+| Issues        | https://github.com/bigeasy/journalist/issues      |
+| CI            | https://travis-ci.org/bigeasy/journalist          |
+| Coverage:     | https://codecov.io/gh/bigeasy/journalist          |
+| License:      | MIT                                               |
 
-    Documentation:  http://bigeasy.github.io/journalist
-    Source:         http://github.com/bigeasy/journalist
-    Issues:         http://github.com/bigeasy/journalist/issues
 
-    Install:        `npm install journalist`
-
-    License:        MIT
-
-To learn everything you want to know about Journalist start here:
-
-    http://bigeasy.github.io/journalist
+```
+npm install journalist
+```

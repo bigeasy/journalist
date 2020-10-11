@@ -3,7 +3,7 @@
     "version":              "0.0.10",
     "description":
 
-      "Maintain a cache of objects that write database pages to file.",
+      "Journaled file system operations that form a transaction.",
 
     "keywords":
     [
