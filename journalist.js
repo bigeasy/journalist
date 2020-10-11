@@ -58,6 +58,7 @@ class Journalist {
 
     // TODO Should be a hash of specific files to filter, not a regex.
     async write (prepare) {
+        prepare = prepare || this.__prepare
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
         assert.deepStrictEqual(unemplaced, [], 'commit directory not empty')
