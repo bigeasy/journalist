@@ -20,19 +20,17 @@
     },
     "dependencies":
     {
-                            "cadence":                      "0.0.50",
-                            "magazine":                     "0.0.12",
-                            "staccato":                     "0.0.6"
+                            "hash.fnv":                     "^1.0.5",
+                            "interrupt":                    "^10.0.3",
+                            "rescue":                       "7.0.0-alpha.1"
     },
     "devDependencies":
     {
-                            "mkdirp":                       "0.5.1",
-                            "proof":                        "1.2.x",
-                            "rimraf":                       "2.5.4"
+                            "proof":                        "^9.0.2"
     },
     "main":                 "journalist.js",
     "scripts":
     {
-                            "test": "proof platform win32 && proof test */*/*.t.js || t/test"
+                            "test": "proof test/*.t.js"
     }
 }
