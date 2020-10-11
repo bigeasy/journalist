@@ -105,12 +105,26 @@ class Journalist {
         return path.join(this._commit, file)
     }
 
-    unlink (filename) {
-        this.__prepare.push({ method: 'unlink', path: filename })
+    async unlink (filename) {
+        const resolved = await this._filename(filename)
+        console.log(resolved)
+        if (resolved.staged) {
+        } else {
+            this.__prepare.push({ method: 'unlink', path: filename })
+            this._staged[filename] = {
+                removed: true,
+                staged: false,
+                relative: path.join(this._tmp.directory, filename)
+            }
+        }
     }
 
-    _unlink (file) {
-        return fs.rmdir(file, { recursive: true })
+    async _unlink (file) {
+        if ((await fs.stat(file)).isDirectory()) {
+            await fs.rmdir(file, { recursive: true })
+        } else {
+            await fs.unlink(file)
+        }
     }
 
     async _filename (filename) {

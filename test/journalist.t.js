@@ -1,4 +1,4 @@
-require('proof')(3, async okay => {
+require('proof')(4, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -63,10 +63,14 @@ require('proof')(3, async okay => {
 
     // Remove a file.
     {
-    /*
         const commit = await createCommit()
         await create(directory, { hello: 'world' })
+        await commit.unlink('hello')
         console.log(await list(directory))
-    */
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), {}, 'unlink')
     }
 })
