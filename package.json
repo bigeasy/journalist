@@ -20,6 +20,7 @@
     },
     "dependencies":
     {
+                            "errno":                        "0.1.7",
                             "hash.fnv":                     "^1.0.5",
                             "interrupt":                    "^10.0.3",
                             "rescue":                       "7.0.0-alpha.1"

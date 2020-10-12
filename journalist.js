@@ -3,6 +3,10 @@ const assert = require('assert')
 const fs = require('fs').promises
 const path = require('path')
 const os = require('os')
+const util = require('util')
+
+// Mappings from `errno` to libuv error messages so we can duplicate them.
+const errno = require('errno')
 
 // Detailed exceptions with nested stack traces.
 const Interrupt = require('interrupt')
@@ -191,18 +195,10 @@ class Journalist {
         const filename = path.normalize(abnormal)
         if (filename in this._staged) {
             if (flag == 'wx') {
-                const error = new Error
-                error.code = 'EEXIST'
-                error.errno = -os.constants.errno.EEXIST
-                error.path = filename
-                throw error
+                throw this._error('EEXIST', 'open', filename)
             }
             if (this._staged[filename].directory) {
-                const error = new Error
-                error.code = 'EISDIR'
-                error.errno = -os.constants.errno.EISDIR
-                error.path = filename
-                throw error
+                throw this._error('EISDIR', 'open', filename)
             }
             this.__prepare.splice(this.__prepare.indexOf(this._staged[filename].operation), 1)
         }
@@ -235,7 +231,7 @@ class Journalist {
     async mkdir (dirname, { mode = 0o777 } = {}) {
         const filename = path.normalize(dirname)
         if (filename in this._staged) {
-            throw this._error(new Error, 'EEXIST', filename)
+            throw this._error('EEXIST', 'mkdir', filename)
         }
         const options = { mode, recursive: true }
         const temporary = path.join(this._absolute.staging, filename)
@@ -256,7 +252,9 @@ class Journalist {
         this.__prepare.push({ method: 'partition' })
     }
 
-    _error (error, code, path) {
+    _error (code, f, path) {
+        const description = errno.code[code].description
+        const error = new Error(`${code}: ${description}, ${f} ${util.inspect(path)}`)
         error.code = code
         error.errno = -os.constants.errno[code]
         error.path = path
@@ -275,7 +273,7 @@ class Journalist {
         }
         if (resolved.to && resolved.to.staged) {
             if (!overwrite) {
-                this._error('EEXISTS', to)
+                this._error('EEXIST', to)
             }
             fs.unlink(resolved.to.filename, { recursive: true })
         }

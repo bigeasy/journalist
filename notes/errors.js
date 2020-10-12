@@ -1,7 +1,11 @@
 const fs = require('fs').promises
 
 async function main () {
-    await fs.mkdir('foo')
+    try {
+        await fs.writeFile('../journalist/foo', 'x', { flag: 'wx' })
+    } catch (error) {
+        console.log(error.message)
+    }
 }
 
 main()
