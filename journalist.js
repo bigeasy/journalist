@@ -42,6 +42,10 @@ const rescue = require('rescue')
 // certain to cause problems. Also, I've only ever use old school UNIX filenames
 // in the ASCII so I'm unfamiliar with the pitfalls of internationalization,
 // emojiis and the like.
+//
+// Journalist is not for general purpose file system operations. It is for
+// creating atomic transactions. Consider it a write-only interface to the file
+// system to be used with a directory structure fully under your control.
 
 //
 class Journalist {
@@ -118,8 +122,10 @@ class Journalist {
 
     _unoperate (filename) {
         const staged = this._staged[filename]
-        this._operations.splice(this._operations.indexOf(staged.operation), 1)
+        const operation = staged.operation
+        this._operations.splice(this._operations.indexOf(operation), 1)
         delete this._staged[filename]
+        return operation
     }
 
     // `unlink` will unlink a file in the staging and primary directory. Unlike
@@ -142,11 +148,12 @@ class Journalist {
             await this._unlink(this._staged[relative].absolute)
             this._unoperate(relative)
         }
-        this._operations.push({ method: 'unlink', path: filename })
+        const operation = { method: 'unlink', path: filename }
+        this._operations.push(operation)
         this._staged[filename] = {
-            removed: true,
             staged: false,
-            relative: filename
+            relative: filename,
+            operation: operation
         }
     }
 
@@ -283,31 +290,60 @@ class Journalist {
         return error
     }
 
+    // Rename a file.
+    //
+    // If the file is staged it will be renamed in the staging directory and
+    // will then be emplaced. The emplacement will occur at this point in the
+    // commit script, not at the point where the file was written using
+    // `writeFile`.
+    //
+    // If the file is not staged the rename will be applied to the primary
+    // directory during commit.
+    //
     // This file operation will create any directory specified in the
-    // destination path.
+    // destination path in the primary directory.
+    //
+    // If the destination path includes directories, any directories that do not
+    // already exist in the primary directory will be created.
+    //
+    // Note that a staged file that has directories in its file path will not
+    // remove the directories. This leaves directories in the staging directory
+    // and can cause problems if you attempt to write a file to staging and one
+    // of these orphaned directories is in its place.
+    //
+    // *TODO* Maybe `rmdir` will run recursively in the staging directory
+    // regardless of whether or not there is a staging entry.
 
     //
-    async rename (from, to, { overwrite = false } = {}) {
-        const resolved = {
-            from: await this._filename(from),
-            to: await this._filename(to)
-        }
-        if (resolved.to && resolved.to.staged) {
-            if (!overwrite) {
-                this._error('EEXIST', to)
+    async rename (from, to) {
+        const relative = { from: path.normalize(from), to: path.normalize(to) }
+        if (relative.from in this._staged) {
+            const absolute = {
+                from: path.join(this._absolute.staging, relative.from),
+                to: path.join(this._absolute.staging, relative.to)
             }
-            fs.unlink(resolved.to.filename, { recursive: true })
-        }
-        if (resolved.from.staged) {
-            await fs.mkdir(path.dirname(from), { recursive: true })
-            // TODO How do I update the 'emplace' or rename?
-            const temporary = {
-                from: path.join(this.directory, resolved.from.relative),
-                to: path.join(this._tmp.path, to)
-            }
-            await fs.rename(temporary.from, temporary.to)
-            resolved.from.operation.filename = path.join(this._tmp.directory, to)
+            await fs.mkdir(path.dirname(absolute.to), { recursive: true })
+            await fs.rename(absolute.from, absolute.to)
+            const operation = this._unoperate(relative.from)
+            operation.filename = relative.to
+            this._operations.push(operation)
         } else {
+            const operation = {
+                method: 'rename',
+                from: {
+                    relative: relative.from,
+                    absolute: path.join(this.directory, relative.from)
+                },
+                to: {
+                    relative: relative.to,
+                    absolute: path.join(this.directory, relative.to)
+                }
+            }
+            this._operations.push(operation)
+            this._staged[relative.to] = {
+                staged: false,
+                operation: operation
+            }
         }
     }
 
@@ -354,7 +390,12 @@ class Journalist {
                     const absolute = path.join(this._absolute.staging, 'commit', file)
                     await fs.mkdir(path.dirname(absolute), { recursive: true })
                     await fs.writeFile(absolute, buffer)
-                    await this._prepare([ 'rename', path.join('commit', file), hash ])
+                    await this._prepare([
+                        'rename',
+                        path.join(this._relative.staging, 'commit', file),
+                        path.join('commit', file),
+                        hash
+                    ])
                 }
                 break
             case 'emplace': {
@@ -362,7 +403,12 @@ class Journalist {
                     if (options.flag == 'w') {
                         await this._prepare([ 'unlink', filename ])
                     }
-                    await this._prepare([ 'rename', filename, hash ])
+                    await this._prepare([ 'rename', path.join(this._relative.staging, filename), filename, hash ])
+                }
+                break
+            case 'rename': {
+                    const { from, to } = operation
+                    await this._prepare([ 'rename', from.relative, to.relative, null ])
                 }
                 break
             case 'unlink': {
@@ -398,9 +444,8 @@ class Journalist {
                 await fs.unlink(this._path(commit))
                 break
             case 'rename': {
-                    const filename = operation.shift()
-                    const from = path.join(this._absolute.staging, filename)
-                    const to = path.join(this.directory, filename)
+                    const from = path.join(this.directory, operation.shift())
+                    const to = path.join(this.directory, operation.shift())
                     await fs.mkdir(path.dirname(to), { recursive: true })
                     // When replayed from failure we'll get `ENOENT`.
                     await fs.rename(from, to)

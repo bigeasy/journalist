@@ -1,4 +1,4 @@
-require('proof')(14, async okay => {
+require('proof')(17, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -80,6 +80,17 @@ require('proof')(14, async okay => {
         okay(await list(directory), {
             'one.4d0ea41d.txt': 'hello, world'
         }, 'write file with hash in filename')
+    }
+
+    // Resolve a file name that is in the primary directory.
+    {
+        const commit = await createCommit()
+        await create(directory, { hello: 'world' })
+        okay(await commit.relative('hello'), 'hello', 'relative in primary directory')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
     }
 
     // Remove a file.
@@ -175,5 +186,32 @@ require('proof')(14, async okay => {
         await commit.commit()
         await commit.dispose()
         okay(await list(directory), { dir: { 'one.txt': 'one' } }, 'create directory')
+    }
+
+    // Rename a file.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await create(directory, { one: 'one' })
+        await commit.rename('one', 'two')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), { two: 'one' }, 'rename file in primary')
+    }
+
+    // Rename a staged file.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await create(directory, { one: 'one' })
+        await commit.writeFile('two', Buffer.from('two'))
+        await commit.rename('two', 'three')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), { one: 'one', three: 'two' }, 'rename file in staging')
     }
 })
