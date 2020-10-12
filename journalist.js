@@ -362,12 +362,13 @@ class Journalist {
         const dir = await this._readdir()
         const commit = dir.filter(file => /^commit\.[0-9a-f]+$/.test(file)).shift()
         if (commit == null) {
-            return false
+            return []
         }
+        const writes = []
         const operations = await this._load(commit)
         // Start by deleting the commit script, once this runs we have to move
         // forward through the entire commit.
-        await this._prepare([ 'begin' ])
+        await writes.push([ 'begin' ])
         while (operations.length != 0) {
             const operation = operations.shift()
             assert(!Array.isArray(operation))
@@ -390,7 +391,7 @@ class Journalist {
                     const absolute = path.join(this._absolute.staging, 'commit', file)
                     await fs.mkdir(path.dirname(absolute), { recursive: true })
                     await fs.writeFile(absolute, buffer)
-                    await this._prepare([
+                    writes.push([
                         'rename',
                         path.join(this._relative.staging, 'commit', file),
                         path.join('commit', file),
@@ -403,24 +404,56 @@ class Journalist {
                     if (options.flag == 'w') {
                         await this._prepare([ 'unlink', filename ])
                     }
-                    await this._prepare([ 'rename', path.join(this._relative.staging, filename), filename, hash ])
+                    writes.push([ 'rename', path.join(this._relative.staging, filename), filename, hash ])
                 }
                 break
             case 'rename': {
                     const { from, to } = operation
-                    await this._prepare([ 'rename', from.relative, to.relative, null ])
+                    writes.push([ 'rename', from.relative, to.relative, null ])
                 }
                 break
             case 'unlink': {
-                    await this._prepare([ 'unlink', operation.path ])
+                    writes.push([ 'unlink', operation.path ])
                 }
                 break
             }
         }
-        await this._prepare([ 'end' ])
-        return true
+        await writes.push([ 'end' ])
+        return writes.map(write => {
+            return { prepare: () => this._prepare(write) }
+        })
     }
 
+    async __commit (step, dir) {
+        const operation = (await this._load(step)).shift()
+        switch (operation.shift()) {
+        case 'begin':
+            const commit = dir.filter(function (file) {
+                return /^commit\./.test(file)
+            }).shift()
+            await fs.unlink(this._path(commit))
+            break
+        case 'rename': {
+                const from = path.join(this.directory, operation.shift())
+                const to = path.join(this.directory, operation.shift())
+                await fs.mkdir(path.dirname(to), { recursive: true })
+                // When replayed from failure we'll get `ENOENT`.
+                await fs.rename(from, to)
+                const hash = operation.shift()
+                if (hash != null) {
+                    const buffer = await fs.readFile(to)
+                    // TODO Is there a suitable UNIX exception?
+                    Journalist.Error.assert(hash == fnv(buffer), 'rename failed')
+                }
+            }
+            break
+        case 'unlink':
+            await this._unlink(path.join(this.directory, operation.shift()))
+            break
+        case 'end':
+            break
+        }
+    }
 
     // Appears that prepared files are always going to be a decimal integer
     // followed by a hexidecimal integer. Files for emplacement appear to have a
@@ -434,37 +467,12 @@ class Journalist {
             const split = file.split('.')
             return { index: +split[0], file: file, hash: split[1] }
         }).sort((left, right) => left.index - right.index)
-        for (const step of steps) {
-            const operation = (await this._load(step.file)).shift()
-            switch (operation.shift()) {
-            case 'begin':
-                const commit = dir.filter(function (file) {
-                    return /^commit\./.test(file)
-                }).shift()
-                await fs.unlink(this._path(commit))
-                break
-            case 'rename': {
-                    const from = path.join(this.directory, operation.shift())
-                    const to = path.join(this.directory, operation.shift())
-                    await fs.mkdir(path.dirname(to), { recursive: true })
-                    // When replayed from failure we'll get `ENOENT`.
-                    await fs.rename(from, to)
-                    const hash = operation.shift()
-                    if (hash != null) {
-                        const buffer = await fs.readFile(to)
-                        // TODO Is there a suitable UNIX exception?
-                        Journalist.Error.assert(hash == fnv(buffer), 'rename failed')
-                    }
-                }
-                break
-            case 'unlink':
-                await this._unlink(path.join(this.directory, operation.shift()))
-                break
-            case 'end':
-                break
+        return steps.map(step => {
+            return {
+                commit: () => this.__commit(step.file, dir),
+                dispose: () => fs.unlink(this._path(step.file))
             }
-            await fs.unlink(this._path(step.file))
-        }
+        })
     }
 
     async dispose () {
@@ -476,4 +484,17 @@ exports.create = async function (directory, { tmp = 'commit' } = {}) {
     const journalist = new Journalist(directory, { tmp })
     await journalist._create()
     return journalist
+}
+
+exports.prepare = async function (journalist) {
+    for (const operation of await journalist.prepare()) {
+        await operation.prepare()
+    }
+}
+
+exports.commit = async function (journalist) {
+    for (const operation of await journalist.commit()) {
+        await operation.commit()
+        await operation.dispose()
+    }
 }

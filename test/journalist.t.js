@@ -56,8 +56,8 @@ require('proof')(17, async okay => {
         okay(await commit.relative('missing.txt'), null, 'missing aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { hello: { 'world.txt': 'hello, world' } }, 'write file ')
     }
@@ -74,8 +74,8 @@ require('proof')(17, async okay => {
         }, 'entry for file with hash in filename')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), {
             'one.4d0ea41d.txt': 'hello, world'
@@ -88,8 +88,8 @@ require('proof')(17, async okay => {
         await create(directory, { hello: 'world' })
         okay(await commit.relative('hello'), 'hello', 'relative in primary directory')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
     }
 
@@ -99,8 +99,8 @@ require('proof')(17, async okay => {
         await create(directory, { hello: 'world' })
         await commit.unlink('hello')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), {}, 'unlink')
     }
@@ -112,8 +112,8 @@ require('proof')(17, async okay => {
         await commit.writeFile('hello', Buffer.from('world'))
         await commit.unlink('hello')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), {}, 'unlink')
     }
@@ -125,8 +125,8 @@ require('proof')(17, async okay => {
         commit.partition()
         await commit.writeFile('two.txt', Buffer.from('two'))
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         const listing = await list(directory)
         okay({
             commit: { staging: listing.commit.staging },
@@ -135,8 +135,8 @@ require('proof')(17, async okay => {
             commit: { staging: { commit: {}, 'two.txt': 'two' } },
             'one.txt': 'one'
         }, 'partial commit')
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), {
             'one.txt': 'one',
@@ -158,8 +158,8 @@ require('proof')(17, async okay => {
         okay(errors, [ 'EEXIST' ], 'overwrite existing')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { 'one.txt': 'two' }, 'overwite file in staging')
     }
@@ -182,8 +182,8 @@ require('proof')(17, async okay => {
         await fs.writeFile(path.join(await commit.absolute('dir'), 'one.txt'), 'one')
         okay(errors, [ 'EEXIST', -17, 'EISDIR', -21 ], 'overwrite existing')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { dir: { 'one.txt': 'one' } }, 'create directory')
     }
@@ -195,8 +195,8 @@ require('proof')(17, async okay => {
         await create(directory, { one: 'one' })
         await commit.rename('one', 'two')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { two: 'one' }, 'rename file in primary')
     }
@@ -209,8 +209,8 @@ require('proof')(17, async okay => {
         await commit.writeFile('two', Buffer.from('two'))
         await commit.rename('two', 'three')
         await commit.write()
-        await commit.prepare()
-        await commit.commit()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { one: 'one', three: 'two' }, 'rename file in staging')
     }
