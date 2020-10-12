@@ -1,4 +1,4 @@
-require('proof')(8, async okay => {
+require('proof')(10, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -117,5 +117,24 @@ require('proof')(8, async okay => {
         await commit.commit()
         await commit.dispose()
         okay(await list(directory), { 'one.txt': 'two' }, 'overwite file in staging')
+    }
+
+    // Create a directory.
+    {
+        const commit = await createCommit()
+        const errors = []
+        const entry = await commit.mkdir('dir')
+        try {
+            await commit.mkdir('dir')
+        } catch (error) {
+            errors.push(error.code, error.errno)
+        }
+        await fs.writeFile(path.join(await commit.absolute('dir'), 'one.txt'), 'one')
+        okay(errors, [ 'EEXIST', -17 ], 'overwrite existing')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), { dir: { 'one.txt': 'one' } }, 'create directory')
     }
 })

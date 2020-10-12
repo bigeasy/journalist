@@ -149,6 +149,10 @@ class Journalist {
         return (await this._filename(filename)).relative
     }
 
+    async absolute (filename) {
+        return (await this._filename(filename)).absolute
+    }
+
     // `filename` can be either a string or a function `format (hash) {}` that
     // will format a file name using the hash value of the file. The function
     // will receive the hash value as the first and only argument to the
@@ -190,8 +194,7 @@ class Journalist {
                 error.path = filename
                 throw error
             }
-            const stats = await fs.stat(this._staged[filename].absolute)
-            if (stats.isDirectory()) {
+            if (this._staged[filename].directory) {
                 const error = new Error
                 error.code = 'EISDIR'
                 error.errno = -os.constants.errno.EISDIR
@@ -206,6 +209,7 @@ class Journalist {
         const operation = { method: 'emplace', filename, hash, options }
         this._staged[filename] = {
             staged: true,
+            directory: false,
             relative: path.join(this._relative.staging, filename),
             absolute: path.join(this._absolute.staging, filename),
             operation: operation
@@ -214,10 +218,36 @@ class Journalist {
         return operation
     }
 
-    async mkdir (dirname, { overwrite = false }) {
-        const temporary = path.join(this._commit, formatted)
+    // Create a directory. The directory is created in the staging area. Files
+    // can then be written to the directory using the normal Node.js file system
+    // module. The entire directory is moved into primary directory usign
+    // `rename`. The `rename` operation is an atomic operation.
+    //
+    // Accepts a `mode` option which defaults to `0x777`.
+    //
+    // Directory construction is always recursive. The full path to the
+    // directory is created if it does not already exist.
+
+    //
+    async mkdir (dirname, { mode = 0o777 } = {}) {
+        const filename = path.normalize(dirname)
+        if (filename in this._staged) {
+        console.log(this._staged)
+            throw this._error(new Error, 'EEXIST', filename)
+        }
+        const options = { mode, recursive: true }
+        const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(temporary, { recursive: true })
-        return { method: 'emplace', filename, overwrite, hash: null }
+        const operation = { method: 'emplace', filename, hash: null, options }
+        this._staged[filename] = {
+            staged: true,
+            directory: true,
+            relative: path.join(this._relative.staging, filename),
+            absolute: path.join(this._absolute.staging, filename),
+            operation: operation
+        }
+        this.__prepare.push(operation)
+        return operation
     }
 
     partition () {
@@ -225,11 +255,11 @@ class Journalist {
     }
 
     _error (error, code, path) {
-        error.code = 'EISDIR'
-        error.errno = -os.constants.errno.EISDIR
-        error.path = filename
+        error.code = code
+        error.errno = -os.constants.errno[code]
+        error.path = path
         Error.captureStackTrace(error, Journalist.prototype._error)
-        throw error
+        return error
     }
 
     // This file operation will create any directory specified in the
@@ -353,10 +383,12 @@ class Journalist {
                     await fs.mkdir(path.dirname(to), { recursive: true })
                     // When replayed from failure we'll get `ENOENT`.
                     await fs.rename(from, to)
-                    const buffer = await fs.readFile(to)
-                    const hash = fnv(buffer)
-                    // TODO Is there a suitable UNIX exception?
-                    Journalist.Error.assert(hash == operation.shift(), 'rename failed')
+                    const hash = operation.shift()
+                    if (hash != null) {
+                        const buffer = await fs.readFile(to)
+                        // TODO Is there a suitable UNIX exception?
+                        Journalist.Error.assert(hash == fnv(buffer), 'rename failed')
+                    }
                 }
                 break
             case 'unlink':
