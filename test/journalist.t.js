@@ -1,4 +1,4 @@
-require('proof')(12, async okay => {
+require('proof')(13, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -53,6 +53,7 @@ require('proof')(12, async okay => {
             hash: '4d0ea41d'
         }, 'write file')
         okay(await commit.filename('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
+        okay(await commit.filename('missing.txt'), null, 'missing aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
         await commit.prepare()

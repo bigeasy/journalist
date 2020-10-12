@@ -143,7 +143,7 @@ class Journalist {
             return { relative, staged: false, operation: null }
         } catch (error) {
             rescue(error, [{ code: 'ENOENT' }])
-            return null
+            return { relative: null, absolute: null }
         }
     }
 
