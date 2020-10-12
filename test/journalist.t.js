@@ -1,4 +1,4 @@
-require('proof')(17, async okay => {
+require('proof')(19, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -213,5 +213,35 @@ require('proof')(17, async okay => {
         await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { one: 'one', three: 'two' }, 'rename file in staging')
+    }
+
+    // TODO Really consider maybe not passing through if it is a staged
+    // directory created by `mkdir`.
+
+    // Remove a primary directory.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await create(directory, { one: {}, two: {} })
+        await commit.rmdir('two', 'three')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: {} }, 'remove directory from primary')
+    }
+
+    // Remove a staged directory.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await create(directory, { one: {}, two: {} })
+        await commit.mkdir('two')
+        await commit.rmdir('two')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: {} }, 'remove directory from staging')
     }
 })

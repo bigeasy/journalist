@@ -134,7 +134,7 @@ class Journalist {
     //
     // If the file has been created in this Journalist using `writeFile` the
     // temporary file will be unlinked from the staging directory and it will
-    // not be copied into place during commit. Regardles of whether or not a
+    // not be copied into place during commit. Regardless of whether or not a
     // staging file is unlinked, an unlink will be attempted in the primary
     // directory.
 
@@ -153,6 +153,55 @@ class Journalist {
         this._staged[filename] = {
             staged: false,
             relative: filename,
+            operation: operation
+        }
+    }
+
+    // `rmdir` will remove a directory in the staging and primary directory.
+    // The directory removal is always recursive destroying the directory and
+    // all its contents.
+    //
+    // It will run in both the primary directory during commit and the staging
+    // directory regardless of whether the or not the directory has been
+    // explicitly created in the staging directory with `mkdir` or created as
+    // part of recursive directory creation for a `mkdir`, `rename` or
+    // `writeFile` that included directories in it's path.
+    //
+    // Running `rmdir` in primary when the intent is to delete a directory in
+    // staging should not be destructive of the primary directory contents since
+    // in order to create a directory in in staging that would have been moved
+    // into primary there you would have had ensure that there is no file or
+    // directory in primary, so you commit script should have moved anything out
+    // of the way before the `rmdir` runs. If this is confusing, the
+    // alternative, running `rmdir` in staging only when directory was created
+    // in staging using `Journalist.mkdir` and not implicitly is just as
+    // difficult to document. (**TODO** Or is it? Try writing that
+    // documentation. Maybe it works and maybe it works for `unlink` as well.
+    // More unit tests first.)
+    //
+    // Note that if you've created files in a directory created using `mkdir` or
+    // otherwise created as part of recursive directory creation, their commit
+    // script operations will not be removed from the commit script and an error
+    // will likely occur during commit when the files are not moved from staging
+    // into the primary directory. You should only use `rmdir` to remove
+    // directories from the primary directory or directories created in staging
+    // with `mkdir`.
+    //
+    // If you do use `rmdir` to prune implicitly created directories, you must
+    // use `unlink` to remove any files write to or renamed into in the
+    // directory or any of its subdirectories first.
+
+    //
+    async rmdir (filename) {
+        const relative = path.normalize(filename)
+        if (relative in this._staged) {
+            this._unoperate(relative)
+        }
+        await fs.rmdir(path.join(this._absolute.staging, relative), { recursive: true })
+        const operation = { method: 'rmdir', path: filename }
+        this._operations.push(operation)
+        this._staged[filename] = {
+            staged: false,
             operation: operation
         }
     }
@@ -416,6 +465,10 @@ class Journalist {
                     writes.push([ 'unlink', operation.path ])
                 }
                 break
+            case 'rmdir': {
+                    writes.push([ 'rmdir', operation.path ])
+                }
+                break
             }
         }
         await writes.push([ 'end' ])
@@ -449,6 +502,9 @@ class Journalist {
             break
         case 'unlink':
             await this._unlink(path.join(this.directory, operation.shift()))
+            break
+        case 'rmdir':
+            await fs.rmdir(path.join(this.directory, operation.shift()), { recursive: true })
             break
         case 'end':
             break
