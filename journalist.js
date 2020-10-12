@@ -65,7 +65,7 @@ class Journalist {
             staging: path.join(directory, tmp, 'staging'),
             commit: path.join(directory, tmp, 'commit')
         }
-        this.__prepare = prepare
+        this._operations = []
     }
 
     async _create () {
@@ -77,7 +77,7 @@ class Journalist {
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
         assert.deepStrictEqual(unemplaced, [], 'commit directory not empty')
-        await this._write('commit', this.__prepare)
+        await this._write('commit', this._operations)
     }
 
     // Believe we can just write out into the commit directory, we don't need to
@@ -120,7 +120,7 @@ class Journalist {
         const resolved = await this._filename(filename)
         if (resolved.staged) {
         } else {
-            this.__prepare.push({ method: 'unlink', path: filename })
+            this._operations.push({ method: 'unlink', path: filename })
             this._staged[filename] = {
                 removed: true,
                 staged: false,
@@ -200,7 +200,7 @@ class Journalist {
             if (this._staged[filename].directory) {
                 throw this._error('EISDIR', 'open', filename)
             }
-            this.__prepare.splice(this.__prepare.indexOf(this._staged[filename].operation), 1)
+            this._operations.splice(this._operations.indexOf(this._staged[filename].operation), 1)
         }
         const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(path.dirname(temporary), { recursive: true })
@@ -213,7 +213,7 @@ class Journalist {
             absolute: path.join(this._absolute.staging, filename),
             operation: operation
         }
-        this.__prepare.push(operation)
+        this._operations.push(operation)
         return operation
     }
 
@@ -244,12 +244,12 @@ class Journalist {
             absolute: path.join(this._absolute.staging, filename),
             operation: operation
         }
-        this.__prepare.push(operation)
+        this._operations.push(operation)
         return operation
     }
 
     partition () {
-        this.__prepare.push({ method: 'partition' })
+        this._operations.push({ method: 'partition' })
     }
 
     _error (code, f, path) {
@@ -406,8 +406,8 @@ class Journalist {
     }
 }
 
-exports.create = async function (directory, { tmp = 'commit', prepare = [] } = {}) {
-    const journalist = new Journalist(directory, { tmp, prepare })
+exports.create = async function (directory, { tmp = 'commit' } = {}) {
+    const journalist = new Journalist(directory, { tmp })
     await journalist._create()
     return journalist
 }
