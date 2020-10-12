@@ -150,8 +150,13 @@ require('proof')(13, async okay => {
         } catch (error) {
             errors.push(error.code, error.errno)
         }
+        try {
+            await commit.writeFile('dir', Buffer.from('one'), { flag: 'w' })
+        } catch (error) {
+            errors.push(error.code, error.errno)
+        }
         await fs.writeFile(path.join(await commit.absolute('dir'), 'one.txt'), 'one')
-        okay(errors, [ 'EEXIST', -17 ], 'overwrite existing')
+        okay(errors, [ 'EEXIST', -17, 'EISDIR', -21 ], 'overwrite existing')
         await commit.write()
         await commit.prepare()
         await commit.commit()
