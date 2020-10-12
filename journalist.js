@@ -50,11 +50,13 @@ class Journalist {
         this._staged = {}
         this._commit = path.join(directory, tmp)
         this._relative = {
+            tmp: tmp,
             staging: path.join(tmp, 'staging'),
             commit: path.join(tmp, 'commit')
         }
         this._absolute = {
             directory,
+            tmp: path.join(directory, tmp),
             prepare: path.join(directory, tmp, 'prepare'),
             staging: path.join(directory, tmp, 'staging'),
             commit: path.join(directory, tmp, 'commit')
@@ -124,10 +126,10 @@ class Journalist {
     }
 
     async _unlink (file) {
-        if ((await fs.stat(file)).isDirectory()) {
-            await fs.rmdir(file, { recursive: true })
-        } else {
+        try {
             await fs.unlink(file)
+        } catch (error) {
+            rescue(error, [{ code: 'ENOENT' }])
         }
     }
 
@@ -232,7 +234,6 @@ class Journalist {
     async mkdir (dirname, { mode = 0o777 } = {}) {
         const filename = path.normalize(dirname)
         if (filename in this._staged) {
-        console.log(this._staged)
             throw this._error(new Error, 'EEXIST', filename)
         }
         const options = { mode, recursive: true }
@@ -337,8 +338,8 @@ class Journalist {
                 }
                 break
             case 'emplace': {
-                    const { page, hash, filename, overwrite } = operation
-                    if (overwrite) {
+                    const { page, hash, filename, options } = operation
+                    if (options.flag == 'w') {
                         await this._prepare([ 'unlink', filename ])
                     }
                     await this._prepare([ 'rename', filename, hash ])
@@ -402,7 +403,7 @@ class Journalist {
     }
 
     async dispose () {
-        await this._unlink(this._commit)
+        await fs.rmdir(this._absolute.tmp, { recursive: true })
     }
 }
 
