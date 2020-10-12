@@ -1,4 +1,4 @@
-require('proof')(13, async okay => {
+require('proof')(14, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -86,6 +86,19 @@ require('proof')(13, async okay => {
     {
         const commit = await createCommit()
         await create(directory, { hello: 'world' })
+        await commit.unlink('hello')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), {}, 'unlink')
+    }
+
+    // Remove a staged file.
+    {
+        const commit = await createCommit()
+        await create(directory, { hello: 'world' })
+        await commit.writeFile('hello', Buffer.from('world'))
         await commit.unlink('hello')
         await commit.write()
         await commit.prepare()

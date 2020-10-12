@@ -116,16 +116,37 @@ class Journalist {
         return path.join(this._commit, file)
     }
 
+    _unoperate (filename) {
+        const staged = this._staged[filename]
+        this._operations.splice(this._operations.indexOf(staged.operation), 1)
+        delete this._staged[filename]
+    }
+
+    // `unlink` will unlink a file in the staging and primary directory. Unlike
+    // the Node.js `fs.unlink`, `Journalist.unlink` will not raise an exception
+    // if the file does not exist.
+    //
+    // If the file has been created in this Journalist using `writeFile` the
+    // temporary file will be unlinked from the staging directory and it will
+    // not be copied into place during commit. Regardles of whether or not a
+    // staging file is unlinked, an unlink will be attempted in the primary
+    // directory.
+
+    // `unlink`  will only work on files and not directories. For directories
+    // use `rmdir`.
+
+    //
     async unlink (filename) {
-        const resolved = await this._filename(filename)
-        if (resolved.staged) {
-        } else {
-            this._operations.push({ method: 'unlink', path: filename })
-            this._staged[filename] = {
-                removed: true,
-                staged: false,
-                relative: filename
-            }
+        const relative = path.normalize(filename)
+        if (relative in this._staged) {
+            await this._unlink(this._staged[relative].absolute)
+            this._unoperate(relative)
+        }
+        this._operations.push({ method: 'unlink', path: filename })
+        this._staged[filename] = {
+            removed: true,
+            staged: false,
+            relative: filename
         }
     }
 
@@ -200,7 +221,7 @@ class Journalist {
             if (this._staged[filename].directory) {
                 throw this._error('EISDIR', 'open', filename)
             }
-            this._operations.splice(this._operations.indexOf(this._staged[filename].operation), 1)
+                this._unoperate(filename)
         }
         const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(path.dirname(temporary), { recursive: true })
