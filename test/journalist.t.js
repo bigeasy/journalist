@@ -1,4 +1,4 @@
-require('proof')(10, async okay => {
+require('proof')(12, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -59,6 +59,26 @@ require('proof')(10, async okay => {
         await commit.commit()
         await commit.dispose()
         okay(await list(directory), { hello: { 'world.txt': 'hello, world' } }, 'write file ')
+    }
+
+    // Create a file with hash in name.
+    {
+        const commit = await createCommit()
+        const entry = await commit.writeFile(hash => `one.${hash}.txt`, Buffer.from('hello, world'))
+        okay(entry, {
+            method: 'emplace',
+            filename: 'one.4d0ea41d.txt',
+            options: { flag: 'wx', mode: 438, encoding: 'utf8' },
+            hash: '4d0ea41d'
+        }, 'entry for file with hash in filename')
+        // await commit.rename('hello/world.txt', 'hello/world.pdf')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), {
+            'one.4d0ea41d.txt': 'hello, world'
+        }, 'write file with hash in filename')
     }
 
     // Remove a file.

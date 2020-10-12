@@ -160,8 +160,9 @@ class Journalist {
     // will receive the hash value as the first and only argument to the
     // function.
     //
-    // `buffer` is the `Buffer`, `String`, `TypedArray` or `DataView`  to write
-    // to the file.
+    // `buffer` is the `Buffer` to wirte. Unlike Node.js `fs.writeFile` this
+    // function does expect a `Buffer` and does not convert from `String`,
+    // `TypedArray` nor `DataView`.
     //
     // Accepts an optional `encoding` with a default value of `'utf8'`.
     //
@@ -186,7 +187,7 @@ class Journalist {
         Journalist.Error.assert(flag == 'w' || flag == 'wx', 'invalid flag')
         const options = { flag, mode, encoding }
         const hash = fnv(buffer)
-        const abnormal = typeof formatter == 'function' ? formatter({ hash, buffer }) : formatter
+        const abnormal = typeof formatter == 'function' ? formatter(hash) : formatter
         const filename = path.normalize(abnormal)
         if (filename in this._staged) {
             if (flag == 'wx') {
