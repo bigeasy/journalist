@@ -147,7 +147,7 @@ class Journalist {
         }
     }
 
-    async filename (filename) {
+    async relative (filename) {
         return (await this._filename(filename)).relative
     }
 

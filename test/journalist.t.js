@@ -52,8 +52,8 @@ require('proof')(13, async okay => {
             options: { flag: 'wx', mode: 438, encoding: 'utf8' },
             hash: '4d0ea41d'
         }, 'write file')
-        okay(await commit.filename('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
-        okay(await commit.filename('missing.txt'), null, 'missing aliased')
+        okay(await commit.relative('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
+        okay(await commit.relative('missing.txt'), null, 'missing aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
         await commit.prepare()
