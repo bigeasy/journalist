@@ -553,14 +553,18 @@ exports.create = async function (directory, { tmp = 'commit' } = {}) {
 }
 
 exports.prepare = async function (journalist) {
-    for (const operation of await journalist.prepare()) {
+    const operations = await journalist.prepare()
+    for (const operation of operations) {
         await operation.prepare()
     }
+    return operations.length
 }
 
 exports.commit = async function (journalist) {
-    for (const operation of await journalist.commit()) {
+    const operations = await journalist.commit()
+    for (const operation of operations) {
         await operation.commit()
         await operation.dispose()
     }
+    return operations.length
 }

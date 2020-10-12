@@ -1,4 +1,4 @@
-require('proof')(19, async okay => {
+require('proof')(21, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -41,6 +41,15 @@ require('proof')(19, async okay => {
 
     // TODO Add some files to dodge.
     // await fs.mkdir(path.join(directory, 'dir'))
+
+    // Recover a commit directory with no commit.
+    {
+        const commit = await createCommit()
+        okay(await Journalist.prepare(commit), 0, 'no prepare')
+        okay(await Journalist.commit(commit), 0, 'no commit')
+        await commit.dispose()
+    }
+
 
     // Create a file.
     {
