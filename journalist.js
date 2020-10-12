@@ -55,6 +55,7 @@ class Journalist {
         }
         this._absolute = {
             directory,
+            prepare: path.join(directory, tmp, 'prepare'),
             staging: path.join(directory, tmp, 'staging'),
             commit: path.join(directory, tmp, 'commit')
         }
@@ -66,7 +67,7 @@ class Journalist {
     }
 
     // TODO Should be a hash of specific files to filter, not a regex.
-    async write (pare) {
+    async write () {
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
         assert.deepStrictEqual(unemplaced, [], 'commit directory not empty')
@@ -111,7 +112,6 @@ class Journalist {
 
     async unlink (filename) {
         const resolved = await this._filename(filename)
-        console.log(resolved)
         if (resolved.staged) {
         } else {
             this.__prepare.push({ method: 'unlink', path: filename })
@@ -191,6 +191,10 @@ class Journalist {
         return { method: 'emplace', filename, overwrite, hash: null }
     }
 
+    partition () {
+        this.__prepare.push({ method: 'partition' })
+    }
+
     _error (error, code, path) {
         error.code = 'EISDIR'
         error.errno = -os.constants.errno.EISDIR
@@ -254,14 +258,23 @@ class Journalist {
             switch (operation.method) {
             // This is the next commit in a series of commits, we write out the
             // remaining operations into a new commit.
-            case 'commit': {
+            case 'partition': {
+                    // TODO Come back and think about this. You want this to be
+                    // garaunteed to execute, each time, so maybe you write out
+                    // and `end` and `begin` pair for the parition.
+                    //
+                    // For now let's do this as cheaply as possible.
+                    //
+                    // Okay, it works. We stage a commit file and move it into
+                    // place.
                     const entries = operations.splice(0)
                     const buffer = Buffer.from(entries.map(JSON.stringify).join('\n') + '\n')
                     const hash = fnv(buffer)
-                    const filename = path.join(path.basename(this._commit), `commit.${hash}`)
-                    await fs.mkdir(path.dirname(path.join(this._commit, filename)), { recursive: true })
-                    await fs.writeFile(path.join(this._commit, filename), buffer)
-                    await this._prepare([ 'rename', filename, hash ])
+                    const file = `commit.${hash}`
+                    const absolute = path.join(this._absolute.staging, 'commit', file)
+                    await fs.mkdir(path.dirname(absolute), { recursive: true })
+                    await fs.writeFile(absolute, buffer)
+                    await this._prepare([ 'rename', path.join('commit', file), hash ])
                 }
                 break
             case 'emplace': {

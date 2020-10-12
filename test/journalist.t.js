@@ -1,4 +1,4 @@
-require('proof')(4, async okay => {
+require('proof')(6, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -54,9 +54,7 @@ require('proof')(4, async okay => {
         }, 'write file')
         okay(await commit.filename('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
-        console.log('writing')
         await commit.write()
-        console.log('preparing')
         await commit.prepare()
         await commit.commit()
         await commit.dispose()
@@ -68,11 +66,36 @@ require('proof')(4, async okay => {
         const commit = await createCommit()
         await create(directory, { hello: 'world' })
         await commit.unlink('hello')
-        console.log(await list(directory))
         await commit.write()
         await commit.prepare()
         await commit.commit()
         await commit.dispose()
         okay(await list(directory), {}, 'unlink')
+    }
+
+    // Partition a commit.
+    {
+        const commit = await createCommit()
+        await commit.writeFile('one.txt', Buffer.from('one'))
+        commit.partition()
+        await commit.writeFile('two.txt', Buffer.from('two'))
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        const listing = await list(directory)
+        okay({
+            commit: { staging: listing.commit.staging },
+            'one.txt': listing['one.txt']
+        }, {
+            commit: { staging: { commit: {}, 'two.txt': 'two' } },
+            'one.txt': 'one'
+        }, 'partial commit')
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), {
+            'one.txt': 'one',
+            'two.txt': 'two'
+        }, 'unlink')
     }
 })
