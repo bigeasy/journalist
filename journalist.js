@@ -49,24 +49,28 @@ class Journalist {
         this.directory = directory
         this._staged = {}
         this._commit = path.join(directory, tmp)
-        this._tmp = {
-            directory: tmp,
-            path: path.join(directory, tmp)
+        this._relative = {
+            staging: path.join(tmp, 'staging'),
+            commit: path.join(tmp, 'commit')
+        }
+        this._absolute = {
+            directory,
+            staging: path.join(directory, tmp, 'staging'),
+            commit: path.join(directory, tmp, 'commit')
         }
         this.__prepare = prepare
     }
 
     async _create () {
-        await fs.mkdir(this._tmp.path, { recursive: true })
+        await fs.mkdir(this._absolute.directory, { recursive: true })
     }
 
     // TODO Should be a hash of specific files to filter, not a regex.
-    async write (prepare) {
-        prepare = prepare || this.__prepare
+    async write (pare) {
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
         assert.deepStrictEqual(unemplaced, [], 'commit directory not empty')
-        await this._write('commit', prepare)
+        await this._write('commit', this.__prepare)
     }
 
     // Believe we can just write out into the commit directory, we don't need to
@@ -83,7 +87,7 @@ class Journalist {
     //
     async _write (file, entries) {
         const buffer = Buffer.from(entries.map(JSON.stringify).join('\n') + '\n')
-        const write = path.join(this._commit, 'write')
+        const write = path.join(this._absolute.commit, 'write')
         await fs.writeFile(write, buffer)
         await fs.rename(write, path.join(this._commit, `${file}.${fnv(buffer)}`))
     }
@@ -96,7 +100,7 @@ class Journalist {
     }
 
     async _readdir () {
-        await fs.mkdir(this._commit, { recursive: true })
+        await fs.mkdir(this._absolute.commit, { recursive: true })
         const dir = await fs.readdir(this._commit)
         return dir.filter(file => ! /^\./.test(file))
     }
@@ -114,7 +118,7 @@ class Journalist {
             this._staged[filename] = {
                 removed: true,
                 staged: false,
-                relative: path.join(this._tmp.directory, filename)
+                relative: filename
             }
         }
     }
@@ -167,13 +171,14 @@ class Journalist {
             }
             await fs.unlink(this._stages[filename])
         }
-        const temporary = path.join(this._commit, filename)
+        const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(path.dirname(temporary), { recursive: true })
         await fs.writeFile(temporary, buffer)
         const operation = { method: 'emplace', filename, overwrite, hash }
         this._staged[filename] = {
             staged: true,
-            relative: path.join(this._tmp.directory, filename),
+            relative: path.join(this._relative.staging, filename),
+            absolute: path.join(this._absolute.staging, filename),
             operation: operation
         }
         this.__prepare.push(operation)
@@ -301,7 +306,7 @@ class Journalist {
                 break
             case 'rename': {
                     const filename = operation.shift()
-                    const from = path.join(this._commit, filename)
+                    const from = path.join(this._absolute.staging, filename)
                     const to = path.join(this.directory, filename)
                     await fs.mkdir(path.dirname(to), { recursive: true })
                     // When replayed from failure we'll get `ENOENT`.

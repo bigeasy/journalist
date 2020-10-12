@@ -52,9 +52,11 @@ require('proof')(4, async okay => {
             overwrite: false,
             hash: '4d0ea41d'
         }, 'write file')
-        okay(await commit.filename('hello/world.txt'), 'commit/hello/world.txt', 'aliased')
+        okay(await commit.filename('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
+        console.log('writing')
         await commit.write()
+        console.log('preparing')
         await commit.prepare()
         await commit.commit()
         await commit.dispose()
