@@ -1,4 +1,4 @@
-require('proof')(6, async okay => {
+require('proof')(8, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -49,7 +49,7 @@ require('proof')(6, async okay => {
         okay(entry, {
             method: 'emplace',
             filename: 'hello/world.txt',
-            overwrite: false,
+            options: { flag: 'wx', mode: 438, encoding: 'utf8' },
             hash: '4d0ea41d'
         }, 'write file')
         okay(await commit.filename('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
@@ -97,5 +97,25 @@ require('proof')(6, async okay => {
             'one.txt': 'one',
             'two.txt': 'two'
         }, 'unlink')
+    }
+
+    // Overwrite a staged file.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await commit.writeFile('one.txt', Buffer.from('one'))
+        try {
+            await commit.writeFile('one.txt', Buffer.from('two'), { flag: 'wx' })
+        } catch (error) {
+            errors.push(error.code)
+        }
+        await commit.writeFile('one.txt', Buffer.from('two'), { flag: 'w' })
+        okay(errors, [ 'EEXIST' ], 'overwrite existing')
+        // await commit.rename('hello/world.txt', 'hello/world.pdf')
+        await commit.write()
+        await commit.prepare()
+        await commit.commit()
+        await commit.dispose()
+        okay(await list(directory), { 'one.txt': 'two' }, 'overwite file in staging')
     }
 })

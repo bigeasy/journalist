@@ -149,32 +149,61 @@ class Journalist {
         return (await this._filename(filename)).relative
     }
 
-    async writeFile (formatter, buffer, { overwrite = false } = {}) {
+    // `filename` can be either a string or a function `format (hash) {}` that
+    // will format a file name using the hash value of the file. The function
+    // will receive the hash value as the first and only argument to the
+    // function.
+    //
+    // `buffer` is the `Buffer`, `String`, `TypedArray` or `DataView`  to write
+    // to the file.
+    //
+    // Accepts an optional `encoding` with a default value of `'utf8'`.
+    //
+    // Accepts a `node` option which defaults to `0o666`.
+    //
+    // Accepts a `mode` and `flag` property, the only allowed `flag` values are
+    // `'w' which will overwrite and `'wx'` which will fail if the file exists.
+    // The default is `'wx'` instead of the default `'w'` of `fs.fileWrite`. If
+    // writing to a staged file with `'wx'` the `EEXISTS` error is raised
+    // immediately, otherwise the error is raised during commit.
+    //
+    // The staged file is moved into place during the commit using `rename`. The
+    // `rename` operation is an atomic operation.
+    //
+    // Remember that this is not a file system library but an atomicity library.
+    // You should only be writing files to be moved into place or if overwriting
+    // files they should be less than `PIPEBUF` bytes long. (If anyone want to
+    // convince me they can be longer please do.) Appends are not supported.
+
+    //
+    async writeFile (formatter, buffer, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
+        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'invalid flag')
+        const options = { flag, mode, encoding }
         const hash = fnv(buffer)
         const abnormal = typeof formatter == 'function' ? formatter({ hash, buffer }) : formatter
         const filename = path.normalize(abnormal)
-        if (this._staged[filename]) {
-            if (!overwrite) {
+        if (filename in this._staged) {
+            if (flag == 'wx') {
                 const error = new Error
-                error.code = 'EEXISTS'
-                error.errno = -os.constants.errno.EEXISTS
+                error.code = 'EEXIST'
+                error.errno = -os.constants.errno.EEXIST
                 error.path = filename
                 throw error
             }
-            const stat = fs.stat(this._staged[filename])
-            if (stat.isDirectory()) {
+            const stats = await fs.stat(this._staged[filename].absolute)
+            if (stats.isDirectory()) {
                 const error = new Error
                 error.code = 'EISDIR'
                 error.errno = -os.constants.errno.EISDIR
                 error.path = filename
                 throw error
             }
-            await fs.unlink(this._stages[filename])
+            this.__prepare.splice(this.__prepare.indexOf(this._staged[filename].operation), 1)
         }
         const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(path.dirname(temporary), { recursive: true })
-        await fs.writeFile(temporary, buffer)
-        const operation = { method: 'emplace', filename, overwrite, hash }
+        await fs.writeFile(temporary, buffer, options)
+        const operation = { method: 'emplace', filename, hash, options }
         this._staged[filename] = {
             staged: true,
             relative: path.join(this._relative.staging, filename),
