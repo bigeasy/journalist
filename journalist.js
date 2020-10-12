@@ -458,7 +458,8 @@ class Journalist {
                 break
             case 'rename': {
                     const { from, to } = operation
-                    writes.push([ 'rename', from.relative, to.relative, null ])
+                    const buffer = await fs.readFile(from.absolute)
+                    writes.push([ 'rename', from.relative, to.relative, fnv(buffer) ])
                 }
                 break
             case 'unlink': {
@@ -493,7 +494,16 @@ class Journalist {
                 // When replayed from failure we'll get `ENOENT`.
                 await fs.rename(from, to)
                 const hash = operation.shift()
-                if (hash != null) {
+                if (hash == null) {
+                    const stat = await async function () {
+                        try {
+                             return await fs.stat(to)
+                        } catch (error) {
+                            throw new Journalist.Error('rename failed', error)
+                        }
+                    } ()
+                    Journalist.Error.assert(stat.isDirectory(), 'rename failed')
+                } else {
                     const buffer = await fs.readFile(to)
                     // TODO Is there a suitable UNIX exception?
                     Journalist.Error.assert(hash == fnv(buffer), 'rename failed')
