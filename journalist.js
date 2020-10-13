@@ -116,10 +116,6 @@ class Journalist {
         return dir.filter(file => ! /^\./.test(file))
     }
 
-    _path (file) {
-        return path.join(this._absolute.commit, file)
-    }
-
     _unoperate (filename) {
         const staged = this._staged[filename]
         const operation = staged.operation
@@ -486,7 +482,7 @@ class Journalist {
             const commit = dir.filter(function (file) {
                 return /^commit\./.test(file)
             }).shift()
-            await fs.unlink(this._path(commit))
+            await this._unlink(path.join(this._absolute.commit, commit))
             break
         case 'rename': {
                 const from = path.join(this.directory, operation.shift())
@@ -542,7 +538,7 @@ class Journalist {
         return steps.map(step => {
             return {
                 commit: () => this.__commit(step.file, dir),
-                dispose: () => fs.unlink(this._path(step.file))
+                dispose: () => this._unlink(path.join(this._absolute.commit, step.file))
             }
         })
     }
