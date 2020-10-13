@@ -553,7 +553,7 @@ class Journalist {
     }
 }
 
-exports.create = async function (directory, { tmp = 'commit' } = {}) {
+exports.create = async function (directory, { tmp = 'tmp' } = {}) {
     const journalist = new Journalist(directory, { tmp })
     await journalist._create()
     return journalist
