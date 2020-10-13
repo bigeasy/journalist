@@ -1,4 +1,4 @@
-require('proof')(23, async okay => {
+require('proof')(25, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -90,7 +90,6 @@ require('proof')(23, async okay => {
             }
             await operation.dispose()
         }
-        console.log(await list(directory))
         const recovery = await Journalist.create(directory)
         okay(await Journalist.prepare(recovery), 0, 'no recovery necessary')
         for (const operation of await recovery.commit()) {
@@ -121,8 +120,18 @@ require('proof')(23, async okay => {
         await commit.unlink('hello')
         await commit.write()
         await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
+        for (const operation of await commit.commit()) {
+            if (await operation.commit() == 'unlink') {
+                break
+            }
+            await operation.dispose()
+        }
+        const recovery = await Journalist.create(directory)
+        await Journalist.prepare(recovery)
+        const commits = await recovery.commit()
+        okay(commits.length, 2, 'recovery of unlink')
+        await Journalist.commit(recovery)
+        await recovery.dispose()
         okay(await list(directory), {}, 'unlink')
     }
 
@@ -286,8 +295,21 @@ require('proof')(23, async okay => {
         await commit.rmdir('two', 'three')
         await commit.write()
         await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
+        for (const operation of await commit.commit()) {
+            if (await operation.commit() == 'rmdir') {
+                break
+            }
+            await operation.dispose()
+        }
+        const recovery = await Journalist.create(directory)
+        await Journalist.prepare(commit)
+        const commits = await commit.commit()
+        okay(commits.length, 2, 'mkdir recovery')
+        for (const operation of commits) {
+            await operation.commit()
+            await operation.dispose()
+        }
+        await recovery.dispose()
         okay(await list(directory), { one: {} }, 'remove directory from primary')
     }
 
