@@ -444,7 +444,7 @@ class Journalist {
                     writes.push([
                         'rename',
                         path.join(this._relative.staging, 'commit', file),
-                        path.join('commit', file),
+                        path.join(this._relative.tmp, file),
                         hash
                     ])
                 }

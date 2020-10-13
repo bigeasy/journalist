@@ -61,7 +61,7 @@ require('proof')(25, async okay => {
             options: { flag: 'wx', mode: 438, encoding: 'utf8' },
             hash: '4d0ea41d'
         }, 'write file')
-        okay(await commit.relative('hello/world.txt'), 'commit/staging/hello/world.txt', 'aliased')
+        okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'aliased')
         okay(await commit.relative('missing.txt'), null, 'missing aliased')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
@@ -132,7 +132,7 @@ require('proof')(25, async okay => {
         okay(commits.length, 2, 'recovery of unlink')
         await Journalist.commit(recovery)
         await recovery.dispose()
-        okay(await list(directory), {}, 'unlink')
+        okay(await list(directory), {}, 'unlink primary')
     }
 
     // Remove a staged file.
@@ -145,7 +145,7 @@ require('proof')(25, async okay => {
         await Journalist.prepare(commit)
         await Journalist.commit(commit)
         await commit.dispose()
-        okay(await list(directory), {}, 'unlink')
+        okay(await list(directory), {}, 'unlink staged')
     }
 
     // Partition a commit.
@@ -159,7 +159,7 @@ require('proof')(25, async okay => {
         await Journalist.commit(commit)
         const listing = await list(directory)
         okay({
-            commit: { staging: listing.commit.staging },
+            commit: { staging: listing.tmp.staging },
             'one.txt': listing['one.txt']
         }, {
             commit: { staging: { commit: {}, 'two.txt': 'two' } },
@@ -171,7 +171,7 @@ require('proof')(25, async okay => {
         okay(await list(directory), {
             'one.txt': 'one',
             'two.txt': 'two'
-        }, 'unlink')
+        }, 'partitioned commit')
     }
 
     // Overwrite a staged file.
