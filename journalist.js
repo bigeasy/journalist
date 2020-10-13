@@ -264,7 +264,7 @@ class Journalist {
         const hash = fnv(buffer)
         const abnormal = typeof formatter == 'function' ? formatter(hash) : formatter
         const filename = path.normalize(abnormal)
-        if (filename in this._staged) {
+        if ((filename in this._staged) && this._staged[filename].staged) {
             if (flag == 'wx') {
                 throw this._error('EEXIST', 'open', filename)
             }
@@ -451,8 +451,9 @@ class Journalist {
                 break
             case 'rename': {
                     const { from, to } = operation
-                    const buffer = await fs.readFile(from.absolute)
-                    writes.push([ 'rename', from.relative, to.relative, fnv(buffer) ])
+                    const stat = await fs.stat(from.absolute)
+                    const hash = stat.isDirectory() ? null : fnv(await fs.readFile(from.absolute))
+                    writes.push([ 'rename', from.relative, to.relative, hash ])
                 }
                 break
             case 'unlink': {

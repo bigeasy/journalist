@@ -1,4 +1,4 @@
-require('proof')(29, async okay => {
+require('proof')(32, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -377,5 +377,44 @@ require('proof')(29, async okay => {
             errors.push(/^rename failed$/m.test(error.message))
         }
         okay(errors, [ true ], 'failed rename checksum')
+    }
+
+    // Unlink a file and move a new file in place.
+    {
+        const commit = await createCommit()
+        await create(directory, { one: 'one' })
+        await commit.unlink('one')
+        await commit.writeFile('one', Buffer.from('two'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: 'two' }, 'unlink and then write to primary')
+    }
+
+    // Unlink a file and rename a file into place.
+    {
+        const commit = await createCommit()
+        await create(directory, { one: 'one', two: 'two' })
+        await commit.unlink('one')
+        await commit.rename('two', 'one')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: 'two' }, 'unlink and then rename to primary')
+    }
+
+    // Unlink a directory and rename a directory into place.
+    {
+        const commit = await createCommit()
+        await create(directory, { one: {}, two: { file: 'x' } })
+        await commit.rmdir('one')
+        await commit.rename('two', 'one')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: { file: 'x' } }, 'unlink and then rename to primary')
     }
 })
