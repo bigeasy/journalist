@@ -1,4 +1,4 @@
-require('proof')(25, async okay => {
+require('proof')(27, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -302,8 +302,8 @@ require('proof')(25, async okay => {
             await operation.dispose()
         }
         const recovery = await Journalist.create(directory)
-        await Journalist.prepare(commit)
-        const commits = await commit.commit()
+        await Journalist.prepare(recovery)
+        const commits = await recovery.commit()
         okay(commits.length, 2, 'mkdir recovery')
         for (const operation of commits) {
             await operation.commit()
@@ -325,5 +325,24 @@ require('proof')(25, async okay => {
         await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { one: {} }, 'remove directory from staging')
+    }
+
+    // Replay a prepare.
+    {
+        const commit = await createCommit()
+        const errors = []
+        await commit.writeFile('one', Buffer.from('one'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        const recovery = await Journalist.create(directory)
+        await Journalist.prepare(recovery)
+        const commits = await recovery.commit()
+        okay(commits.length, 3, 'replay prepare')
+        for (const operation of commits) {
+            await operation.commit()
+            await operation.dispose()
+        }
+        await recovery.dispose()
+        okay(await list(directory), { one: 'one' }, 'replay a prepare')
     }
 })
