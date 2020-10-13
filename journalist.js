@@ -72,7 +72,8 @@ class Journalist {
     }
 
     async _create () {
-        await fs.mkdir(this._absolute.directory, { recursive: true })
+        await fs.mkdir(this._absolute.staging, { recursive: true })
+        await fs.mkdir(this._absolute.commit, { recursive: true })
     }
 
     // TODO Should be a hash of specific files to filter, not a regex.
@@ -111,7 +112,6 @@ class Journalist {
     }
 
     async _readdir () {
-        await fs.mkdir(this._absolute.commit, { recursive: true })
         const dir = await fs.readdir(this._absolute.commit)
         return dir.filter(file => ! /^\./.test(file))
     }
