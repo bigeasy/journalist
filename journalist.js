@@ -56,7 +56,6 @@ class Journalist {
         this._index = 0
         this.directory = directory
         this._staged = {}
-        this._commit = path.join(directory, tmp)
         this._relative = {
             tmp: tmp,
             staging: path.join(tmp, 'staging'),
@@ -101,11 +100,11 @@ class Journalist {
         const buffer = Buffer.from(entries.map(JSON.stringify).join('\n') + '\n')
         const write = path.join(this._absolute.commit, 'write')
         await fs.writeFile(write, buffer)
-        await fs.rename(write, path.join(this._commit, `${file}.${fnv(buffer)}`))
+        await fs.rename(write, path.join(this._absolute.commit, `${file}.${fnv(buffer)}`))
     }
 
     async _load (file) {
-        const buffer = await fs.readFile(path.join(this._commit, file))
+        const buffer = await fs.readFile(path.join(this._absolute.commit, file))
         const hash = fnv(buffer)
         assert.equal(hash, file.split('.')[1], 'commit hash failure')
         return buffer.toString().split('\n').filter(line => line != '').map(JSON.parse)
@@ -113,12 +112,12 @@ class Journalist {
 
     async _readdir () {
         await fs.mkdir(this._absolute.commit, { recursive: true })
-        const dir = await fs.readdir(this._commit)
+        const dir = await fs.readdir(this._absolute.commit)
         return dir.filter(file => ! /^\./.test(file))
     }
 
     _path (file) {
-        return path.join(this._commit, file)
+        return path.join(this._absolute.commit, file)
     }
 
     _unoperate (filename) {
@@ -444,7 +443,7 @@ class Journalist {
                     writes.push([
                         'rename',
                         path.join(this._relative.staging, 'commit', file),
-                        path.join(this._relative.tmp, file),
+                        path.join(this._relative.commit, file),
                         hash
                     ])
                 }
