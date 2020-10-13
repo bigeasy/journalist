@@ -1,4 +1,4 @@
-require('proof')(27, async okay => {
+require('proof')(29, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -344,5 +344,38 @@ require('proof')(27, async okay => {
         }
         await recovery.dispose()
         okay(await list(directory), { one: 'one' }, 'replay a prepare')
+    }
+
+    // Failed file write checksum.
+    {
+        const errors = []
+        const commit = await createCommit()
+        await commit.writeFile('one', Buffer.from('one'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        await fs.writeFile(path.join(directory, 'tmp', 'staging', 'one'), 'two')
+        try {
+            await Journalist.commit(commit)
+        } catch (error) {
+            errors.push(/^rename failed$/m.test(error.message))
+        }
+        okay(errors, [ true ], 'failed write file checksum')
+    }
+
+    // Failed rename checksum.
+    {
+        const errors = []
+        const commit = await createCommit()
+        await create(directory, { one: 'one' })
+        await commit.rename('one', 'two')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await fs.writeFile(path.join(directory, 'one'), 'two')
+        try {
+            await Journalist.commit(commit)
+        } catch (error) {
+            errors.push(/^rename failed$/m.test(error.message))
+        }
+        okay(errors, [ true ], 'failed rename checksum')
     }
 })
