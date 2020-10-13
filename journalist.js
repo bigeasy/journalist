@@ -1,5 +1,4 @@
 // Node.js API.
-const assert = require('assert')
 const fs = require('fs').promises
 const path = require('path')
 const os = require('os')
@@ -52,7 +51,6 @@ class Journalist {
     static Error = Interrupt.create('Journalist.Error')
 
     constructor (directory, { tmp, prepare }) {
-        assert(typeof directory == 'string')
         this._index = 0
         this.directory = directory
         this._staged = {}
@@ -80,7 +78,7 @@ class Journalist {
     async write () {
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
-        assert.deepStrictEqual(unemplaced, [], 'commit directory not empty')
+        Journalist.Error.assert(unemplaced.length == 0, 'commit directory not empty')
         await this._write('commit', this._operations)
     }
 
@@ -107,7 +105,7 @@ class Journalist {
     async _load (file) {
         const buffer = await fs.readFile(path.join(this._absolute.commit, file))
         const hash = fnv(buffer)
-        assert.equal(hash, file.split('.')[1], 'commit hash failure')
+        Journalist.Error.assert(hash == file.split('.')[1], 'commit hash failure')
         return buffer.toString().split('\n').filter(line => line != '').map(JSON.parse)
     }
 
@@ -416,7 +414,6 @@ class Journalist {
         await writes.push([ 'begin' ])
         while (operations.length != 0) {
             const operation = operations.shift()
-            assert(!Array.isArray(operation))
             switch (operation.method) {
             // This is the next commit in a series of commits, we write out the
             // remaining operations into a new commit.
