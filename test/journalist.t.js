@@ -1,4 +1,4 @@
-require('proof')(21, async okay => {
+require('proof')(23, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -84,8 +84,20 @@ require('proof')(21, async okay => {
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
         await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
+        for (const operation of await commit.commit()) {
+            if (await operation.commit() == 'rename') {
+                break
+            }
+            await operation.dispose()
+        }
+        console.log(await list(directory))
+        const recovery = await Journalist.create(directory)
+        okay(await Journalist.prepare(recovery), 0, 'no recovery necessary')
+        for (const operation of await recovery.commit()) {
+            await operation.commit()
+            await operation.dispose()
+        }
+        await recovery.dispose()
         okay(await list(directory), {
             'one.4d0ea41d.txt': 'hello, world'
         }, 'write file with hash in filename')
@@ -192,9 +204,48 @@ require('proof')(21, async okay => {
         okay(errors, [ 'EEXIST', -17, 'EISDIR', -21 ], 'overwrite existing')
         await commit.write()
         await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
+        for (const operation of await commit.commit()) {
+            if (await operation.commit() == 'rename') {
+                break
+            }
+            await operation.dispose()
+        }
+        const recovery = await Journalist.create(directory)
+        await Journalist.prepare(recovery)
+        for (const operation of await recovery.commit()) {
+            await operation.commit()
+            await operation.dispose()
+        }
+        await recovery.dispose()
         okay(await list(directory), { dir: { 'one.txt': 'one' } }, 'create directory')
+    }
+
+    // Catch failure to create a directory.
+    {
+        const commit = await createCommit()
+        const entry = await commit.mkdir('dir')
+        await commit.write()
+        await Journalist.prepare(commit)
+        for (const operation of await commit.commit()) {
+            if (await operation.commit() == 'rename') {
+                break
+            }
+            await operation.dispose()
+        }
+        await fs.rmdir(path.join(directory, 'dir'))
+        const recovery = await Journalist.create(directory)
+        await Journalist.prepare(recovery)
+        const errors = []
+        try {
+            for (const operation of await recovery.commit()) {
+                await operation.commit()
+                await operation.dispose()
+            }
+        } catch (error) {
+            errors.push(/^rename failed$/m.test(error.message))
+        }
+        okay(errors, [ true ], 'caught failure to create directory')
+        await recovery.dispose()
     }
 
     // Rename a file.

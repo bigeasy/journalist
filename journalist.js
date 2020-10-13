@@ -91,6 +91,7 @@ class Journalist {
     //
     async _prepare (operation) {
         await this._write(String(this._index++), [ operation ])
+        return operation[0]
     }
 
     // Recall that `fs.writeFile` overwrites without complaint.
@@ -480,7 +481,8 @@ class Journalist {
 
     async __commit (step, dir) {
         const operation = (await this._load(step)).shift()
-        switch (operation.shift()) {
+        const method = operation.shift()
+        switch (method) {
         case 'begin':
             const commit = dir.filter(function (file) {
                 return /^commit\./.test(file)
@@ -492,12 +494,16 @@ class Journalist {
                 const to = path.join(this.directory, operation.shift())
                 await fs.mkdir(path.dirname(to), { recursive: true })
                 // When replayed from failure we'll get `ENOENT`.
-                await fs.rename(from, to)
+                try {
+                    await fs.rename(from, to)
+                } catch (error) {
+                    rescue(error, [{ code: 'ENOENT' }])
+                }
                 const hash = operation.shift()
                 if (hash == null) {
                     const stat = await async function () {
                         try {
-                             return await fs.stat(to)
+                            return await fs.stat(to)
                         } catch (error) {
                             throw new Journalist.Error('rename failed', error)
                         }
@@ -519,6 +525,7 @@ class Journalist {
         case 'end':
             break
         }
+        return method
     }
 
     // Appears that prepared files are always going to be a decimal integer
