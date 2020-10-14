@@ -1,4 +1,4 @@
-require('proof')(32, async okay => {
+require('proof')(33, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -55,10 +55,11 @@ require('proof')(32, async okay => {
     {
         const commit = await createCommit()
         const entry = await commit.writeFile('hello/world.txt', Buffer.from('hello, world'))
+        delete entry.absolute
         okay(entry, {
-            method: 'emplace',
             filename: 'hello/world.txt',
-            options: { flag: 'wx', mode: 438, encoding: 'utf8' },
+            relative: 'tmp/staging/hello/world.txt',
+            flag: 'wx', mode: 438, encoding: 'utf8',
             hash: '4d0ea41d'
         }, 'write file')
         okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'aliased')
@@ -75,10 +76,11 @@ require('proof')(32, async okay => {
     {
         const commit = await createCommit()
         const entry = await commit.writeFile(hash => `one.${hash}.txt`, Buffer.from('hello, world'))
+        delete entry.absolute
         okay(entry, {
-            method: 'emplace',
             filename: 'one.4d0ea41d.txt',
-            options: { flag: 'wx', mode: 438, encoding: 'utf8' },
+            relative: 'tmp/staging/one.4d0ea41d.txt',
+            flag: 'wx', mode: 438, encoding: 'utf8',
             hash: '4d0ea41d'
         }, 'entry for file with hash in filename')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
@@ -199,6 +201,12 @@ require('proof')(32, async okay => {
         const commit = await createCommit()
         const errors = []
         const entry = await commit.mkdir('dir')
+        delete entry.absolute
+        okay(entry, {
+            dirname: 'dir',
+            mode: 0o777,
+            relative: 'tmp/staging/dir'
+        }, 'mkdir entry')
         try {
             await commit.mkdir('dir')
         } catch (error) {

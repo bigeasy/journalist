@@ -256,6 +256,12 @@ class Journalist {
     // You should only be writing files to be moved into place or if overwriting
     // files they should be less than `PIPEBUF` bytes long. (If anyone want to
     // convince me they can be longer please do.) Appends are not supported.
+    //
+    // Maybe this should be `touch`? Or maybe implement a `touch` so you don't
+    // have to implement a streaming interface? But, then... The point of the
+    // streaming interface is that the file is very large and if it is very
+    // large you'll need to stream the checksum, and you'll probably want to
+    // stream it as you go.
 
     //
     async writeFile (formatter, buffer, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
@@ -277,7 +283,7 @@ class Journalist {
         await fs.mkdir(path.dirname(temporary), { recursive: true })
         await fs.writeFile(temporary, buffer, options)
         const operation = { method: 'emplace', filename, hash, options }
-        this._staged[filename] = {
+        const stage = this._staged[filename] = {
             staged: true,
             directory: false,
             relative: path.join(this._relative.staging, filename),
@@ -285,7 +291,11 @@ class Journalist {
             operation: operation
         }
         this._operations.push(operation)
-        return operation
+        return {
+            absolute: stage.absolute,
+            relative: stage.relative,
+            filename, flag, mode, encoding, hash
+        }
     }
 
     // Create a directory. The directory is created in the staging area. Files
@@ -308,7 +318,7 @@ class Journalist {
         const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(temporary, { recursive: true })
         const operation = { method: 'emplace', filename, hash: null, options }
-        this._staged[filename] = {
+        const stage = this._staged[filename] = {
             staged: true,
             directory: true,
             relative: path.join(this._relative.staging, filename),
@@ -316,7 +326,11 @@ class Journalist {
             operation: operation
         }
         this._operations.push(operation)
-        return operation
+        return {
+            relative: stage.relative,
+            absolute: stage.absolute,
+            dirname, mode
+        }
     }
 
     partition () {
