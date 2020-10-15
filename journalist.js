@@ -384,6 +384,11 @@ class Journalist {
             const operation = this._unoperate(relative.from)
             operation.filename = relative.to
             this._operations.push(operation)
+            this._staged[relative.to] = {
+                staged: operation.staged,
+                directory: operation.directory,
+                operation: operation
+            }
         } else {
             const operation = {
                 method: 'rename',
