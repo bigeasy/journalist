@@ -145,7 +145,6 @@ class Journalist {
         const operation = { method: 'unlink', path: filename }
         this._operations.push(operation)
         this._staged[filename] = {
-            staged: false,
             relative: filename,
             operation: operation
         }
@@ -195,7 +194,7 @@ class Journalist {
         const operation = { method: 'rmdir', path: filename }
         this._operations.push(operation)
         this._staged[filename] = {
-            staged: false,
+            extant: false,
             operation: operation
         }
     }
@@ -216,10 +215,10 @@ class Journalist {
         try {
             const absolute = path.join(this.directory, relative)
             await fs.stat(absolute)
-            return { relative, absolute, staged: false }
+            return { relative, absolute, extant: true }
         } catch (error) {
             rescue(error, [{ code: 'ENOENT' }])
-            return { relative: null, absolute: null }
+            return { relative: null, absolute: null, extant: false }
         }
     }
 
@@ -271,21 +270,21 @@ class Journalist {
         const hash = fnv(buffer)
         const abnormal = typeof formatter == 'function' ? formatter(hash) : formatter
         const filename = path.normalize(abnormal)
-        if ((filename in this._staged) && this._staged[filename].staged) {
+        if ((filename in this._staged) && this._staged[filename].extant) {
             if (flag == 'wx') {
                 throw this._error('EEXIST', 'open', filename)
             }
             if (this._staged[filename].directory) {
                 throw this._error('EISDIR', 'open', filename)
             }
-                this._unoperate(filename)
+            this._unoperate(filename)
         }
         const temporary = path.join(this._absolute.staging, filename)
         await fs.mkdir(path.dirname(temporary), { recursive: true })
         await fs.writeFile(temporary, buffer, options)
         const operation = { method: 'emplace', filename, hash, options }
         const stage = this._staged[filename] = {
-            staged: true,
+            extant: true,
             directory: false,
             relative: path.join(this._relative.staging, filename),
             absolute: path.join(this._absolute.staging, filename),
@@ -312,7 +311,7 @@ class Journalist {
     //
     async mkdir (dirname, { mode = 0o777 } = {}) {
         const filename = path.normalize(dirname)
-        if (filename in this._staged) {
+        if ((filename in this._staged) && this._staged[filename].extant) {
             throw this._error('EEXIST', 'mkdir', filename)
         }
         const options = { mode, recursive: true }
@@ -320,7 +319,7 @@ class Journalist {
         await fs.mkdir(temporary, { recursive: true })
         const operation = { method: 'emplace', filename, hash: null, options }
         const stage = this._staged[filename] = {
-            staged: true,
+            extant: true,
             directory: true,
             relative: path.join(this._relative.staging, filename),
             absolute: path.join(this._absolute.staging, filename),
@@ -375,6 +374,7 @@ class Journalist {
     //
     async rename (from, to) {
         const relative = { from: path.normalize(from), to: path.normalize(to) }
+        // TODO Move of staged `rmdir` or `unlink`.
         if (relative.from in this._staged) {
             const absolute = {
                 from: path.join(this._absolute.staging, relative.from),
@@ -386,7 +386,7 @@ class Journalist {
             operation.filename = relative.to
             this._operations.push(operation)
             this._staged[relative.to] = {
-                staged: operation.staged,
+                extant: operation.extant,
                 directory: operation.directory,
                 operation: operation
             }
@@ -404,7 +404,13 @@ class Journalist {
             }
             this._operations.push(operation)
             this._staged[relative.to] = {
-                staged: false,
+                extant: true,
+                directory: (await fs.stat(path.join(this.directory, relative.from))).isDirectory(),
+                operation: operation
+            }
+            this._staged[relative.from] = {
+                extant: false,
+                directory: false,
                 operation: operation
             }
         }

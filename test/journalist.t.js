@@ -1,4 +1,4 @@
-require('proof')(38, async okay => {
+require('proof')(43, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -453,5 +453,70 @@ require('proof')(38, async okay => {
         await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { three: {} }, 'rename staged directory twice')
+    }
+
+    // Unmake and remake a staged directory.
+    {
+        const commit = await createCommit()
+        await commit.mkdir('one')
+        await commit.rmdir('one')
+        await commit.mkdir('one')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: {} }, 'create staged directory twice')
+    }
+
+    // Write, unlink and write a staged file.
+    {
+        const commit = await createCommit()
+        await commit.writeFile('one', Buffer.from('one'))
+        await commit.unlink('one')
+        await commit.writeFile('one', Buffer.from('two'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: 'two' }, 'write wx staged file twice')
+    }
+
+    // Unlink a primary file and write file.
+    {
+        const commit = await createCommit()
+        await create(directory, { 'one': 'one' })
+        await commit.unlink('one')
+        await commit.writeFile('one', Buffer.from('two'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: 'two' }, 'unlink primary file and write')
+    }
+
+    // Write over staged renamed file source.
+    {
+        const commit = await createCommit()
+        await commit.writeFile('one', Buffer.from('two'))
+        await commit.rename('one', 'two')
+        await commit.writeFile('one', Buffer.from('one'))
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: 'one', two: 'two' }, 'write over staged renamed file source')
+    }
+
+    // Create directory over staged renamed directory source.
+    {
+        const commit = await createCommit()
+        await commit.mkdir('one')
+        await commit.rename('one', 'two')
+        await commit.mkdir('one')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { one: {}, two: {} }, 'mkdir over staged renamed file source')
     }
 })
