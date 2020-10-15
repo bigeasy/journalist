@@ -1,4 +1,4 @@
-require('proof')(33, async okay => {
+require('proof')(35, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -424,5 +424,31 @@ require('proof')(33, async okay => {
         await Journalist.commit(commit)
         await commit.dispose()
         okay(await list(directory), { one: { file: 'x' } }, 'unlink and then rename to primary')
+    }
+
+    // Rename staged file twice.
+    {
+        const commit = await createCommit()
+        await commit.writeFile('one', Buffer.from('one'))
+        await commit.rename('one', 'two')
+        await commit.rename('two', 'three')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { three: 'one' }, 'rename staged file twice')
+    }
+
+    // Rename staged directroy twice.
+    {
+        const commit = await createCommit()
+        await commit.mkdir('one')
+        await commit.rename('one', 'two')
+        await commit.rename('two', 'three')
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        await commit.dispose()
+        okay(await list(directory), { three: {} }, 'rename staged directory twice')
     }
 })
