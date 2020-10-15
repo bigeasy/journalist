@@ -214,8 +214,9 @@ class Journalist {
             return this._staged[filename]
         }
         try {
-            await fs.stat(path.join(this.directory, relative))
-            return { relative, staged: false, operation: null }
+            const absolute = path.join(this.directory, relative)
+            await fs.stat(absolute)
+            return { relative, absolute, staged: false }
         } catch (error) {
             rescue(error, [{ code: 'ENOENT' }])
             return { relative: null, absolute: null }

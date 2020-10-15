@@ -1,4 +1,4 @@
-require('proof')(35, async okay => {
+require('proof')(38, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -55,15 +55,17 @@ require('proof')(35, async okay => {
     {
         const commit = await createCommit()
         const entry = await commit.writeFile('hello/world.txt', Buffer.from('hello, world'))
-        delete entry.absolute
         okay(entry, {
             filename: 'hello/world.txt',
+            absolute: path.join(directory, 'tmp/staging/hello/world.txt'),
             relative: 'tmp/staging/hello/world.txt',
             flag: 'wx', mode: 438, encoding: 'utf8',
             hash: '4d0ea41d'
         }, 'write file')
-        okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'aliased')
-        okay(await commit.relative('missing.txt'), null, 'missing aliased')
+        okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'staged relative')
+        okay(await commit.absolute('hello/world.txt'), path.join(directory, 'tmp/staging/hello/world.txt'), 'staged missing')
+        okay(await commit.relative('missing.txt'), null, 'missing relative')
+        okay(await commit.absolute('missing.txt'), null, 'missing relative')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
         await Journalist.prepare(commit)
@@ -76,10 +78,10 @@ require('proof')(35, async okay => {
     {
         const commit = await createCommit()
         const entry = await commit.writeFile(hash => `one.${hash}.txt`, Buffer.from('hello, world'))
-        delete entry.absolute
         okay(entry, {
             filename: 'one.4d0ea41d.txt',
             relative: 'tmp/staging/one.4d0ea41d.txt',
+            absolute: path.join(directory, 'tmp/staging/one.4d0ea41d.txt'),
             flag: 'wx', mode: 438, encoding: 'utf8',
             hash: '4d0ea41d'
         }, 'entry for file with hash in filename')
@@ -109,6 +111,7 @@ require('proof')(35, async okay => {
         const commit = await createCommit()
         await create(directory, { hello: 'world' })
         okay(await commit.relative('hello'), 'hello', 'relative in primary directory')
+        okay(await commit.absolute('hello'), path.join(directory, 'hello'), 'absolute in primary directory')
         await commit.write()
         await Journalist.prepare(commit)
         await Journalist.commit(commit)
@@ -201,11 +204,11 @@ require('proof')(35, async okay => {
         const commit = await createCommit()
         const errors = []
         const entry = await commit.mkdir('dir')
-        delete entry.absolute
         okay(entry, {
             dirname: 'dir',
             mode: 0o777,
-            relative: 'tmp/staging/dir'
+            relative: 'tmp/staging/dir',
+            absolute: path.join(directory, 'tmp/staging/dir')
         }, 'mkdir entry')
         try {
             await commit.mkdir('dir')
