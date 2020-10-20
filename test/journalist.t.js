@@ -262,9 +262,9 @@ require('proof')(43, async okay => {
                 await operation.dispose()
             }
         } catch (error) {
-            errors.push(/^rename failed$/m.test(error.message))
+            errors.push(error.code)
         }
-        okay(errors, [ true ], 'caught failure to create directory')
+        okay(errors, [ 'RENAME_NON_EXTANT' ], 'caught failure to create directory')
         await recovery.dispose()
     }
 
@@ -368,9 +368,10 @@ require('proof')(43, async okay => {
         try {
             await Journalist.commit(commit)
         } catch (error) {
-            errors.push(/^rename failed$/m.test(error.message))
+            errors.push(error.code)
+            console.log(error.stack)
         }
-        okay(errors, [ true ], 'failed write file checksum')
+        okay(errors, [ 'RENAME_BAD_HASH' ], 'failed write file checksum')
     }
 
     // Failed rename checksum.
@@ -385,9 +386,10 @@ require('proof')(43, async okay => {
         try {
             await Journalist.commit(commit)
         } catch (error) {
-            errors.push(/^rename failed$/m.test(error.message))
+            errors.push(error.code)
+            console.log(error.stack)
         }
-        okay(errors, [ true ], 'failed rename checksum')
+        okay(errors, [ 'RENAME_BAD_HASH' ], 'failed rename checksum')
     }
 
     // Unlink a file and move a new file in place.

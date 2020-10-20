@@ -48,7 +48,14 @@ const rescue = require('rescue')
 
 //
 class Journalist {
-    static Error = Interrupt.create('Journalist.Error')
+    static Error = Interrupt.create('Journalist.Error', {
+        'EXISTING_COMMIT': 'commit directory not empty',
+        'INVALID_FLAG': 'invalid write file flag, only \'w\' and \'wx\' allowed',
+        'COMMIT_BAD_HASH': 'commit step hash validation failed',
+        'RENAME_BAD_HASH': 'emplaced or renamed file hash validation failed',
+        'RENAME_NOT_DIR': 'emplaced or renamed directory is not a directory',
+        'RENAME_NON_EXTANT': 'emplaced or renamed file or directory does not exist'
+    })
 
     constructor (directory, { tmp, prepare }) {
         this._index = 0
@@ -78,7 +85,9 @@ class Journalist {
     async write () {
         const dir = await this._readdir()
         const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
-        Journalist.Error.assert(unemplaced.length == 0, 'commit directory not empty')
+        Journalist.Error.assert(unemplaced.length == 0, 'EXISTING_COMMIT', {
+            dir: this._absolute.commit
+        })
         await this._write('commit', this._operations)
     }
 
@@ -103,9 +112,12 @@ class Journalist {
     }
 
     async _load (file) {
-        const buffer = await fs.readFile(path.join(this._absolute.commit, file))
-        const hash = fnv(buffer)
-        Journalist.Error.assert(hash == file.split('.')[1], 'commit hash failure')
+        const absolute = path.join(this._absolute.commit, file)
+        const buffer = await fs.readFile(absolute)
+        const hash = { actual: fnv(buffer), expected: file.split('.')[1] }
+        Journalist.Error.assert(hash.actual == hash.expected, 'COMMIT_BAD_HASH', {
+            ...hash, file: absolute
+        })
         return buffer.toString().split('\n').filter(line => line != '').map(JSON.parse)
     }
 
@@ -265,7 +277,7 @@ class Journalist {
 
     //
     async writeFile (formatter, buffer, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
-        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'invalid flag')
+        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'INVALID_FLAG', { flag })
         const options = { flag, mode, encoding }
         const hash = fnv(buffer)
         const abnormal = typeof formatter == 'function' ? formatter(hash) : formatter
@@ -518,20 +530,23 @@ class Journalist {
                 } catch (error) {
                     rescue(error, [{ code: 'ENOENT' }])
                 }
-                const hash = operation.shift()
-                if (hash == null) {
+                const hash = { expected: operation.shift(), actual: null }
+                if (hash.expected == null) {
                     const stat = await async function () {
                         try {
                             return await fs.stat(to)
                         } catch (error) {
-                            throw new Journalist.Error('rename failed', error)
+                            throw new Journalist.Error('RENAME_NON_EXTANT', error)
                         }
                     } ()
-                    Journalist.Error.assert(stat.isDirectory(), 'rename failed')
+                    Journalist.Error.assert(stat.isDirectory(), 'RENAME_NOT_DIR', { from, to })
                 } else {
                     const buffer = await fs.readFile(to)
+                    hash.actual = fnv(buffer)
                     // TODO Is there a suitable UNIX exception?
-                    Journalist.Error.assert(hash == fnv(buffer), 'rename failed')
+                    Journalist.Error.assert(hash.expected == hash.actual, 'RENAME_BAD_HASH', {
+                        ...hash, from, to
+                    })
                 }
             }
             break
