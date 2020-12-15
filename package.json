@@ -22,7 +22,7 @@
     {
                             "errno":                        "0.1.7",
                             "hash.fnv":                     "^1.0.5",
-                            "interrupt":                    "11.0.0-alpha.1",
+                            "interrupt":                    "11.0.0-alpha.11",
                             "rescue":                       "7.0.0-alpha.1"
     },
     "devDependencies":

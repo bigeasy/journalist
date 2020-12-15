@@ -49,12 +49,12 @@ const rescue = require('rescue')
 //
 class Journalist {
     static Error = Interrupt.create('Journalist.Error', {
-        'EXISTING_COMMIT': 'commit directory not empty',
-        'INVALID_FLAG': 'invalid write file flag, only \'w\' and \'wx\' allowed',
-        'COMMIT_BAD_HASH': 'commit step hash validation failed',
-        'RENAME_BAD_HASH': 'emplaced or renamed file hash validation failed',
-        'RENAME_NOT_DIR': 'emplaced or renamed directory is not a directory',
-        'RENAME_NON_EXTANT': 'emplaced or renamed file or directory does not exist'
+        EXISTING_COMMIT: 'commit directory not empty',
+        INVALID_FLAG: 'invalid write file flag, only \'w\' and \'wx\' allowed',
+        COMMIT_BAD_HASH: 'commit step hash validation failed',
+        RENAME_BAD_HASH: 'emplaced or renamed file hash validation failed',
+        RENAME_NOT_DIR: 'emplaced or renamed directory is not a directory',
+        RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist'
     })
 
     constructor (directory, { tmp, prepare }) {
