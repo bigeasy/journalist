@@ -57,7 +57,7 @@ class Journalist {
         RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist'
     })
 
-    constructor (directory, { tmp, prepare }) {
+    constructor (directory, { tmp, message }) {
         this._index = 0
         this.directory = directory
         this._staged = {}
@@ -74,6 +74,9 @@ class Journalist {
             commit: path.join(directory, tmp, 'commit')
         }
         this._operations = []
+        if (message != null) {
+            this._operations.push({ method: 'message', message })
+        }
     }
 
     async _create () {
@@ -453,6 +456,10 @@ class Journalist {
         while (operations.length != 0) {
             const operation = operations.shift()
             switch (operation.method) {
+            case 'message': {
+                    writes.push([ 'message', operation.message ])
+                }
+                break
             // This is the next commit in a series of commits, we write out the
             // remaining operations into a new commit.
             case 'partition': {
@@ -520,6 +527,10 @@ class Journalist {
             }).shift()
             await this._unlink(path.join(this._absolute.commit, commit))
             break
+        case 'message': {
+                await this._write('message', [{ message: operation.shift() }])
+            }
+            break
         case 'rename': {
                 const from = path.join(this.directory, operation.shift())
                 const to = path.join(this.directory, operation.shift())
@@ -582,13 +593,22 @@ class Journalist {
         })
     }
 
+    async message () {
+        const dir = await this._readdir()
+        const message = dir.filter(file => /^message\.[0-9a-f]+$/.test(file)).shift()
+        if (message != null) {
+            return (await this._load(message)).shift().message
+        }
+        return null
+    }
+
     async dispose () {
         await fs.rmdir(this._absolute.tmp, { recursive: true })
     }
 }
 
-exports.create = async function (directory, { tmp = 'tmp' } = {}) {
-    const journalist = new Journalist(directory, { tmp })
+exports.create = async function (directory, { tmp = 'tmp', message = null } = {}) {
+    const journalist = new Journalist(directory, { tmp, message })
     await journalist._create()
     return journalist
 }

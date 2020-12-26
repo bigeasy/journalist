@@ -1,4 +1,4 @@
-require('proof')(43, async okay => {
+require('proof')(45, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -6,10 +6,10 @@ require('proof')(43, async okay => {
 
     const directory = path.join(__dirname, 'tmp')
 
-    async function createCommit () {
+    async function createCommit (options = {}) {
         await fs.rmdir(directory, { recursive: true })
         // TODO Make this `async` so we can create the directory.
-        return await Journalist.create(directory)
+        return await Journalist.create(directory, options)
     }
 
     async function create (directory, structure) {
@@ -47,9 +47,19 @@ require('proof')(43, async okay => {
         const commit = await createCommit()
         okay(await Journalist.prepare(commit), 0, 'no prepare')
         okay(await Journalist.commit(commit), 0, 'no commit')
+        okay(await commit.message(), null, 'no commit message')
         await commit.dispose()
     }
 
+    // Create a commit message.
+    {
+        const commit = await createCommit({ message: { hello: 'world' } })
+        await commit.write()
+        await Journalist.prepare(commit)
+        await Journalist.commit(commit)
+        okay(await commit.message(), { hello: 'world' }, 'message recorded')
+        await commit.dispose()
+    }
 
     // Create a file.
     {
