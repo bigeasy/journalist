@@ -64,13 +64,15 @@ require('proof')(45, async okay => {
     // Create a file.
     {
         const commit = await createCommit()
-        const entry = await commit.writeFile('hello/world.txt', Buffer.from('hello, world'))
+        const writer = await commit.writeFileRedux('hello/world.txt')
+        await writer.handle.write(Buffer.from('hello, world'))
+        const entry = await writer.commit()
         okay(entry, {
             filename: 'hello/world.txt',
             absolute: path.join(directory, 'tmp/staging/hello/world.txt'),
             relative: 'tmp/staging/hello/world.txt',
             flag: 'wx', mode: 438, encoding: 'utf8',
-            hash: '4d0ea41d'
+            hash: 'b7e23ec29af22b0b4e41da31e868d57226121c84'
         }, 'write file')
         okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'staged relative')
         okay(await commit.absolute('hello/world.txt'), path.join(directory, 'tmp/staging/hello/world.txt'), 'staged missing')
@@ -87,13 +89,15 @@ require('proof')(45, async okay => {
     // Create a file with hash in name.
     {
         const commit = await createCommit()
-        const entry = await commit.writeFile(hash => `one.${hash}.txt`, Buffer.from('hello, world'))
+        const writer = await commit.writeFileRedux(hash => `one.${hash}.txt`)
+        writer.handle.write(Buffer.from('hello, world'))
+        const entry = await writer.commit()
         okay(entry, {
-            filename: 'one.4d0ea41d.txt',
-            relative: 'tmp/staging/one.4d0ea41d.txt',
-            absolute: path.join(directory, 'tmp/staging/one.4d0ea41d.txt'),
+            filename: 'one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt',
+            relative: 'tmp/staging/one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt',
+            absolute: path.join(directory, 'tmp/staging/one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt'),
             flag: 'wx', mode: 438, encoding: 'utf8',
-            hash: '4d0ea41d'
+            hash: 'b7e23ec29af22b0b4e41da31e868d57226121c84'
         }, 'entry for file with hash in filename')
         // await commit.rename('hello/world.txt', 'hello/world.pdf')
         await commit.write()
@@ -112,7 +116,7 @@ require('proof')(45, async okay => {
         }
         await recovery.dispose()
         okay(await list(directory), {
-            'one.4d0ea41d.txt': 'hello, world'
+            'one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt': 'hello, world'
         }, 'write file with hash in filename')
     }
 
@@ -154,7 +158,9 @@ require('proof')(45, async okay => {
     {
         const commit = await createCommit()
         await create(directory, { hello: 'world' })
-        await commit.writeFile('hello', Buffer.from('world'))
+        const writer = await commit.writeFileRedux('hello')
+        writer.handle.write(Buffer.from('world'))
+        await writer.commit()
         await commit.unlink('hello')
         await commit.write()
         await Journalist.prepare(commit)
@@ -193,9 +199,13 @@ require('proof')(45, async okay => {
     {
         const commit = await createCommit()
         const errors = []
-        await commit.writeFile('one.txt', Buffer.from('one'))
+        const writer = await commit.writeFileRedux('one.txt')
+        writer.handle.write(Buffer.from('one'))
+        await writer.commit()
         try {
-            await commit.writeFile('one.txt', Buffer.from('two'), { flag: 'wx' })
+            const writer = await commit.writeFileRedux('one.txt',  { flag: 'wx' })
+            writer.handle.write(Buffer.from('two'))
+            await writer.commit()
         } catch (error) {
             errors.push(error.code)
         }

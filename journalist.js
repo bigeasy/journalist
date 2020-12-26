@@ -1,8 +1,13 @@
 // Node.js API.
 const fs = require('fs').promises
+const fileSystem = require('fs')
+const crypto = require('crypto')
 const path = require('path')
 const os = require('os')
 const util = require('util')
+
+// Sensible `async`/`await` over Node.js streams.
+const Staccato = require('staccato/redux')
 
 // Mappings from `errno` to libuv error messages so we can duplicate them.
 const errno = require('errno')
@@ -71,17 +76,20 @@ class Journalist {
             tmp: path.join(directory, tmp),
             prepare: path.join(directory, tmp, 'prepare'),
             staging: path.join(directory, tmp, 'staging'),
+            write: path.join(directory, tmp, 'write'),
             commit: path.join(directory, tmp, 'commit')
         }
         this._operations = []
         if (message != null) {
             this._operations.push({ method: 'message', message })
         }
+        this._tmpfile = 0
     }
 
     async _create () {
         await fs.mkdir(this._absolute.staging, { recursive: true })
         await fs.mkdir(this._absolute.commit, { recursive: true })
+        await fs.mkdir(this._absolute.write, { recursive: true })
     }
 
     // TODO Should be a hash of specific files to filter, not a regex.
@@ -264,19 +272,15 @@ class Journalist {
     // writing to a staged file with `'wx'` the `EEXISTS` error is raised
     // immediately, otherwise the error is raised during commit.
     //
-    // The staged file is moved into place during the commit using `rename`. The
-    // `rename` operation is an atomic operation.
+    // **TODO** In actuality, the file will be overwritten by unlinking any
+    // existing file and writing the file with `'as+'`, an `O_SYNC` append which
+    // will ensure that it is written to the underlying file system.
     //
-    // Remember that this is not a file system library but an atomicity library.
-    // You should only be writing files to be moved into place or if overwriting
-    // files they should be less than `PIPEBUF` bytes long. (If anyone want to
-    // convince me they can be longer please do.) Appends are not supported.
-    //
-    // Maybe this should be `touch`? Or maybe implement a `touch` so you don't
-    // have to implement a streaming interface? But, then... The point of the
-    // streaming interface is that the file is very large and if it is very
-    // large you'll need to stream the checksum, and you'll probably want to
-    // stream it as you go.
+    // However, this is kind of transient at the moment. Would rather we simply
+    // did a `writeFile(filename, '', { flag: 'w' })` and returned the file
+    // name. Then went it came time to commit we could stream the file into
+    // `crypto.hash('sha1')` and record the hash that way. Similarly, we could
+    // recursively hash a directory.
 
     //
     async writeFile (formatter, buffer, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
@@ -312,6 +316,58 @@ class Journalist {
             filename, flag, mode, encoding, hash
         }
     }
+
+    async writeFileRedux (filename, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
+        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'INVALID_FLAG', { flag })
+        const options = { filename: null, flag, mode, encoding }
+        const tmpfile = path.resolve(this._absolute.write, String(this._tmpfile++))
+        const handle = await fs.open(tmpfile, 'wx')
+        return {
+            handle: handle,
+            commit: async () => {
+                await handle.sync()
+                await handle.close()
+                const staccato = new Staccato(fileSystem.createReadStream(tmpfile))
+                const checksum = crypto.createHash('sha1')
+                for await (const block of staccato) {
+                    checksum.update(block)
+                }
+                const hash = checksum.digest('hex').toLowerCase()
+                if (typeof filename == 'function') {
+                    filename = filename(hash)
+                }
+                filename = path.normalize(filename)
+                if ((filename in this._staged) && this._staged[filename].extant) {
+                    if (flag == 'wx') {
+                        throw this._error('EEXIST', 'open', filename)
+                    }
+                    if (this._staged[filename].directory) {
+                        throw this._error('EISDIR', 'open', filename)
+                    }
+                    this._unoperate(filename)
+                }
+                options.filename = filename
+                const temporary = path.join(this._absolute.staging, filename)
+                await fs.mkdir(path.dirname(temporary), { recursive: true })
+                await fs.rename(tmpfile, temporary)
+                const operation = { method: 'emplace', filename, hash, options }
+                const stage = this._staged[filename] = {
+                    extant: true,
+                    directory: false,
+                    relative: path.join(this._relative.staging, filename),
+                    absolute: path.join(this._absolute.staging, filename),
+                    operation: operation
+                }
+                this._operations.push(operation)
+                return {
+                    absolute: stage.absolute,
+                    relative: stage.relative,
+                    filename, flag, mode, encoding, hash
+                }
+            }
+        }
+    }
+    //
 
     // Create a directory. The directory is created in the staging area. Files
     // can then be written to the directory using the normal Node.js file system
@@ -542,6 +598,7 @@ class Journalist {
                     rescue(error, [{ code: 'ENOENT' }])
                 }
                 const hash = { expected: operation.shift(), actual: null }
+                // **TODO** Streaming hash.
                 if (hash.expected == null) {
                     const stat = await async function () {
                         try {
@@ -629,3 +686,17 @@ exports.commit = async function (journalist) {
     }
     return operations.length
 }
+
+    async function list (directory) {
+        const listing = {}
+        for (const file of (await fs.readdir(directory))) {
+            const resolved = path.join(directory, file)
+            const stat = await fs.stat(resolved)
+            if (stat.isDirectory()) {
+                listing[file] = await list(resolved)
+            } else {
+                listing[file] = await fs.readFile(resolved, 'utf8')
+            }
+        }
+        return listing
+    }
