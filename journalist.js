@@ -669,7 +669,7 @@ class Journalist {
         if (messages != null) {
             return await this._load(messages)
         }
-        return null
+        return []
     }
 
     async dispose () {

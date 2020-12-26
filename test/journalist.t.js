@@ -47,7 +47,7 @@ require('proof')(48, async okay => {
         const commit = await createCommit()
         okay(await Journalist.prepare(commit), 0, 'no prepare')
         okay(await Journalist.commit(commit), 0, 'no commit')
-        okay(await commit.messages(), null, 'no commit message')
+        okay(await commit.messages(), [], 'no commit message')
         await commit.dispose()
     }
 
