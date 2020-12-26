@@ -62,7 +62,7 @@ class Journalist {
         RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist'
     })
 
-    constructor (directory, { tmp, message }) {
+    constructor (directory, { tmp, perpetuated }) {
         this._index = 0
         this.directory = directory
         this._staged = {}
@@ -79,11 +79,14 @@ class Journalist {
             write: path.join(directory, tmp, 'write'),
             commit: path.join(directory, tmp, 'commit')
         }
-        this._operations = []
-        if (message != null) {
-            this._operations.push({ method: 'message', message })
-        }
+        this._operations = [{ method: 'messages', messages: [] }]
         this._tmpfile = 0
+    }
+
+    // **TODO** Assertions before you allow this to be run.
+    async _propagate () {
+        await fs.rmdir(this._absolute.staging, { recursive: true })
+        await fs.rmdir(this._absolute.write, { recursive: true })
     }
 
     async _create () {
@@ -100,6 +103,10 @@ class Journalist {
             dir: this._absolute.commit
         })
         await this._write('commit', this._operations)
+        const messages = dir.filter(file => /^messages\.[0-9a-f]+$/.test(file)).shift()
+        if (messages != null) {
+            await fs.unlink(path.resolve(this._absolute.commit, messages))
+        }
     }
 
     // Believe we can just write out into the commit directory, we don't need to
@@ -143,6 +150,10 @@ class Journalist {
         this._operations.splice(this._operations.indexOf(operation), 1)
         delete this._staged[filename]
         return operation
+    }
+
+    message (message) {
+        this._operations[0].messages.push(message)
     }
 
     // `unlink` will unlink a file in the staging and primary directory. Unlike
@@ -512,8 +523,10 @@ class Journalist {
         while (operations.length != 0) {
             const operation = operations.shift()
             switch (operation.method) {
-            case 'message': {
-                    writes.push([ 'message', operation.message ])
+            case 'messages': {
+                    if (operation.messages.length != 0) {
+                        writes.push([ 'messages', operation.messages ])
+                    }
                 }
                 break
             // This is the next commit in a series of commits, we write out the
@@ -583,8 +596,8 @@ class Journalist {
             }).shift()
             await this._unlink(path.join(this._absolute.commit, commit))
             break
-        case 'message': {
-                await this._write('message', [{ message: operation.shift() }])
+        case 'messages': {
+                await this._write('messages', operation.shift())
             }
             break
         case 'rename': {
@@ -650,11 +663,11 @@ class Journalist {
         })
     }
 
-    async message () {
+    async messages () {
         const dir = await this._readdir()
-        const message = dir.filter(file => /^message\.[0-9a-f]+$/.test(file)).shift()
-        if (message != null) {
-            return (await this._load(message)).shift().message
+        const messages = dir.filter(file => /^messages\.[0-9a-f]+$/.test(file)).shift()
+        if (messages != null) {
+            return await this._load(messages)
         }
         return null
     }
@@ -665,6 +678,13 @@ class Journalist {
 }
 
 exports.create = async function (directory, { tmp = 'tmp', message = null } = {}) {
+    if (directory instanceof Journalist) {
+        const journalist = new Journalist(directory.directory, { tmp, message, perpetuated: true })
+        // **TODO** Assert that old journalist has cleaned up.
+        await journalist._propagate()
+        await journalist._create()
+        return journalist
+    }
     const journalist = new Journalist(directory, { tmp, message })
     await journalist._create()
     return journalist

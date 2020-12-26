@@ -1,4 +1,4 @@
-require('proof')(45, async okay => {
+require('proof')(48, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
@@ -47,18 +47,37 @@ require('proof')(45, async okay => {
         const commit = await createCommit()
         okay(await Journalist.prepare(commit), 0, 'no prepare')
         okay(await Journalist.commit(commit), 0, 'no commit')
-        okay(await commit.message(), null, 'no commit message')
+        okay(await commit.messages(), null, 'no commit message')
         await commit.dispose()
     }
 
     // Create a commit message.
     {
-        const commit = await createCommit({ message: { hello: 'world' } })
+        const commit = await createCommit()
+        commit.message({ hello: 'world' })
         await commit.write()
         await Journalist.prepare(commit)
         await Journalist.commit(commit)
-        okay(await commit.message(), { hello: 'world' }, 'message recorded')
+        okay(await commit.messages(), [{ hello: 'world' }], 'messages recorded')
         await commit.dispose()
+    }
+
+    // Perpetulate a commit.
+    {
+        const first = await createCommit()
+        first.message({ hello: 'world' })
+        await first.write()
+        await Journalist.prepare(first)
+        await Journalist.commit(first)
+        okay(await first.messages(), [{ hello: 'world' }], 'messages recorded')
+        const second = await Journalist.create(first)
+        okay(await second.messages(), [{ hello: 'world' }], 'messages perpetuated')
+        second.message({ hello: 'brian' })
+        await second.write()
+        await Journalist.prepare(second)
+        await Journalist.commit(second)
+        okay(await second.messages(), [{ hello: 'brian' }], 'messages overwritten')
+        await second.dispose()
     }
 
     // Create a file.
