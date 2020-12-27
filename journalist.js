@@ -5,6 +5,7 @@ const crypto = require('crypto')
 const path = require('path')
 const os = require('os')
 const util = require('util')
+const assert = require('assert')
 
 // Sensible `async`/`await` over Node.js streams.
 const Staccato = require('staccato/redux')
@@ -20,8 +21,9 @@ const fnv = require('./fnv')
 
 // Catch exceptions by type, message, property.
 const rescue = require('rescue')
+//
 
-// Journalist is a utility for atomic file operations leveraging the atomicity
+// Journalist is a utility for atomic file operations. I leverages the atomicity
 // of `unlink` and `rename` on UNIX filesystems. With it you can perform a set
 // of file operations that must occur together or not at all as part of a
 // transaction. You create a script of file operations and once you commit the
@@ -59,664 +61,308 @@ class Journalist {
         COMMIT_BAD_HASH: 'commit step hash validation failed',
         RENAME_BAD_HASH: 'emplaced or renamed file hash validation failed',
         RENAME_NOT_DIR: 'emplaced or renamed directory is not a directory',
-        RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist'
+        RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist',
+        NOT_A_DIRECTORY: 'destination path includes a part that is not a directory',
+        PATH_DOES_NOT_EXIST: 'destination path does not exist'
     })
 
-    constructor (directory, { tmp, perpetuated }) {
-        this._index = 0
-        this.directory = directory
-        this._staged = {}
-        this._relative = {
-            tmp: tmp,
-            staging: path.join(tmp, 'staging'),
-            commit: path.join(tmp, 'commit')
-        }
-        this._absolute = {
-            directory,
-            tmp: path.join(directory, tmp),
-            prepare: path.join(directory, tmp, 'prepare'),
-            staging: path.join(directory, tmp, 'staging'),
-            write: path.join(directory, tmp, 'write'),
-            commit: path.join(directory, tmp, 'commit')
-        }
-        this._operations = [{ method: 'messages', messages: [] }]
-        this._tmpfile = 0
+    static COMPOSING = Symbol('COMPOSING')
+    static COMMITTING = Symbol('COMMITTING')
+
+    constructor (directory, { tmp }) {
+        this.state = Journalist.COMPOSING
+        this.messages = []
+        this.directory = path.normalize(directory)
+        Journalist.Error.assert(path.isAbsolute(this.directory), 'DIRECTORY_PATH_NOT_ABSOLUTE')
+        this._tmp = this._normalize(tmp)
+        this.tmp = path.resolve(this.directory, this._tmp)
+        Journalist.Error.assert(this.tmp.indexOf(this.directory) == 0, 'TMP_NOT_IN_DIRECTORY')
+        this._operations = [{
+            method: 'messages',
+            normalized: null,
+            messages: []
+        }]
+        this._script = null
     }
 
-    // **TODO** Assertions before you allow this to be run.
-    async _propagate () {
-        await fs.rmdir(this._absolute.staging, { recursive: true })
-        await fs.rmdir(this._absolute.write, { recursive: true })
+    static async create (directory, { tmp = 'tmp' } = {}) {
+        const journalist = new Journalist(directory, { tmp })
+        await journalist._recover()
+        return journalist
     }
 
-    async _create () {
-        await fs.mkdir(this._absolute.staging, { recursive: true })
-        await fs.mkdir(this._absolute.commit, { recursive: true })
-        await fs.mkdir(this._absolute.write, { recursive: true })
-    }
-
-    // TODO Should be a hash of specific files to filter, not a regex.
-    async write () {
-        const dir = await this._readdir()
-        const unemplaced = dir.filter(file => ! /\d+\.\d+-\d+\.\d+\.[0-9a-f]/)
-        Journalist.Error.assert(unemplaced.length == 0, 'EXISTING_COMMIT', {
-            dir: this._absolute.commit
-        })
-        await this._write('commit', this._operations)
-        const messages = dir.filter(file => /^messages\.[0-9a-f]+$/.test(file)).shift()
-        if (messages != null) {
-            await fs.unlink(path.resolve(this._absolute.commit, messages))
-        }
-    }
-
-    // Believe we can just write out into the commit directory, we don't need to
-    // move a file into the directory. No, we do want to get a good write and
-    // only rename is atomic. What if we had a bad write?
-
-    //
-    async _prepare (operation) {
-        await this._write(String(this._index++), [ operation ])
-        return operation[0]
-    }
-
-    // Recall that `fs.writeFile` overwrites without complaint.
-
-    //
-    async _write (file, entries) {
-        const buffer = Buffer.from(entries.map(JSON.stringify).join('\n') + '\n')
-        const write = path.join(this._absolute.commit, 'write')
-        await fs.writeFile(write, buffer)
-        await fs.rename(write, path.join(this._absolute.commit, `${file}.${fnv(buffer)}`))
-    }
-
-    async _load (file) {
-        const absolute = path.join(this._absolute.commit, file)
-        const buffer = await fs.readFile(absolute)
-        const hash = { actual: fnv(buffer), expected: file.split('.')[1] }
-        Journalist.Error.assert(hash.actual == hash.expected, 'COMMIT_BAD_HASH', {
-            ...hash, file: absolute
-        })
-        return buffer.toString().split('\n').filter(line => line != '').map(JSON.parse)
-    }
-
-    async _readdir () {
-        const dir = await fs.readdir(this._absolute.commit)
-        return dir.filter(file => ! /^\./.test(file))
-    }
-
-    _unoperate (filename) {
-        const staged = this._staged[filename]
-        const operation = staged.operation
-        this._operations.splice(this._operations.indexOf(operation), 1)
-        delete this._staged[filename]
-        return operation
+    _normalize (filename) {
+        const normalized = path.normalize(filename)
+        Journalist.Error.assert(!path.isAbsolute(normalized), 'PATH_NOT_RELATIVE')
+        Journalist.Error.assert(!(
+            ~normalized.split(path.sep).indexOf('..') ||
+            normalized == '.'
+        ), 'RELATIVE_PATH_EXITS_DIRECTORY')
+        const primary = path.resolve(this.directory, normalized)
+        Journalist.Error.assert(primary.indexOf(this.directory) == 0, 'PATH_NOT_IN_DIRECTORY')
+        return normalized
     }
 
     message (message) {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
         this._operations[0].messages.push(message)
     }
 
-    // `unlink` will unlink a file in the staging and primary directory. Unlike
-    // the Node.js `fs.unlink`, `Journalist.unlink` will not raise an exception
-    // if the file does not exist.
-    //
-    // If the file has been created in this Journalist using `writeFile` the
-    // temporary file will be unlinked from the staging directory and it will
-    // not be copied into place during commit. Regardless of whether or not a
-    // staging file is unlinked, an unlink will be attempted in the primary
-    // directory.
-
-    // `unlink`  will only work on files and not directories. For directories
-    // use `rmdir`.
-
-    //
-    async unlink (filename) {
-        const relative = path.normalize(filename)
-        if (relative in this._staged) {
-            await this._unlink(this._staged[relative].absolute)
-            this._unoperate(relative)
-        }
-        const operation = { method: 'unlink', path: filename }
-        this._operations.push(operation)
-        this._staged[filename] = {
-            relative: filename,
-            operation: operation
-        }
+    unlink (filename) {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
+        const normalized = this._normalize(filename)
+        this._operations.push({ method: 'unlink', normalized })
     }
 
-    // `rmdir` will remove a directory in the staging and primary directory.
-    // The directory removal is always recursive destroying the directory and
-    // all its contents.
-    //
-    // It will run in both the primary directory during commit and the staging
-    // directory regardless of whether the or not the directory has been
-    // explicitly created in the staging directory with `mkdir` or created as
-    // part of recursive directory creation for a `mkdir`, `rename` or
-    // `writeFile` that included directories in it's path.
-    //
-    // Running `rmdir` in primary when the intent is to delete a directory in
-    // staging should not be destructive of the primary directory contents since
-    // in order to create a directory in in staging that would have been moved
-    // into primary there you would have had ensure that there is no file or
-    // directory in primary, so you commit script should have moved anything out
-    // of the way before the `rmdir` runs. If this is confusing, the
-    // alternative, running `rmdir` in staging only when directory was created
-    // in staging using `Journalist.mkdir` and not implicitly is just as
-    // difficult to document. (**TODO** Or is it? Try writing that
-    // documentation. Maybe it works and maybe it works for `unlink` as well.
-    // More unit tests first.)
-    //
-    // Note that if you've created files in a directory created using `mkdir` or
-    // otherwise created as part of recursive directory creation, their commit
-    // script operations will not be removed from the commit script and an error
-    // will likely occur during commit when the files are not moved from staging
-    // into the primary directory. You should only use `rmdir` to remove
-    // directories from the primary directory or directories created in staging
-    // with `mkdir`.
-    //
-    // If you do use `rmdir` to prune implicitly created directories, you must
-    // use `unlink` to remove any files write to or renamed into in the
-    // directory or any of its subdirectories first.
-
-    //
-    async rmdir (filename) {
-        const relative = path.normalize(filename)
-        if (relative in this._staged) {
-            this._unoperate(relative)
-        }
-        await fs.rmdir(path.join(this._absolute.staging, relative), { recursive: true })
-        const operation = { method: 'rmdir', path: filename }
-        this._operations.push(operation)
-        this._staged[filename] = {
-            extant: false,
-            operation: operation
-        }
-    }
-
-    async _unlink (file) {
-        try {
-            await fs.unlink(file)
-        } catch (error) {
-            rescue(error, [{ code: 'ENOENT' }])
-        }
-    }
-
-    async _filename (filename) {
-        const relative = path.normalize(filename)
-        if (this._staged[relative]) {
-            return this._staged[filename]
-        }
-        try {
-            const absolute = path.join(this.directory, relative)
-            await fs.stat(absolute)
-            return { relative, absolute, extant: true }
-        } catch (error) {
-            rescue(error, [{ code: 'ENOENT' }])
-            return { relative: null, absolute: null, extant: false }
-        }
-    }
-
-    async relative (filename) {
-        return (await this._filename(filename)).relative
-    }
-
-    async absolute (filename) {
-        return (await this._filename(filename)).absolute
-    }
-
-    // `filename` can be either a string or a function `format (hash) {}` that
-    // will format a file name using the hash value of the file. The function
-    // will receive the hash value as the first and only argument to the
-    // function.
-    //
-    // `buffer` is the `Buffer` to wirte. Unlike Node.js `fs.writeFile` this
-    // function does expect a `Buffer` and does not convert from `String`,
-    // `TypedArray` nor `DataView`.
-    //
-    // Accepts an optional `encoding` with a default value of `'utf8'`.
-    //
-    // Accepts a `node` option which defaults to `0o666`.
-    //
-    // Accepts a `mode` and `flag` property, the only allowed `flag` values are
-    // `'w' which will overwrite and `'wx'` which will fail if the file exists.
-    // The default is `'wx'` instead of the default `'w'` of `fs.fileWrite`. If
-    // writing to a staged file with `'wx'` the `EEXISTS` error is raised
-    // immediately, otherwise the error is raised during commit.
-    //
-    // **TODO** In actuality, the file will be overwritten by unlinking any
-    // existing file and writing the file with `'as+'`, an `O_SYNC` append which
-    // will ensure that it is written to the underlying file system.
-    //
-    // However, this is kind of transient at the moment. Would rather we simply
-    // did a `writeFile(filename, '', { flag: 'w' })` and returned the file
-    // name. Then went it came time to commit we could stream the file into
-    // `crypto.hash('sha1')` and record the hash that way. Similarly, we could
-    // recursively hash a directory.
-
-    //
-    async writeFile (formatter, buffer, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
-        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'INVALID_FLAG', { flag })
-        const options = { flag, mode, encoding }
-        const hash = fnv(buffer)
-        const abnormal = typeof formatter == 'function' ? formatter(hash) : formatter
-        const filename = path.normalize(abnormal)
-        if ((filename in this._staged) && this._staged[filename].extant) {
-            if (flag == 'wx') {
-                throw this._error('EEXIST', 'open', filename)
-            }
-            if (this._staged[filename].directory) {
-                throw this._error('EISDIR', 'open', filename)
-            }
-            this._unoperate(filename)
-        }
-        const temporary = path.join(this._absolute.staging, filename)
-        await fs.mkdir(path.dirname(temporary), { recursive: true })
-        await fs.writeFile(temporary, buffer, options)
-        const operation = { method: 'emplace', filename, hash, options }
-        const stage = this._staged[filename] = {
-            extant: true,
-            directory: false,
-            relative: path.join(this._relative.staging, filename),
-            absolute: path.join(this._absolute.staging, filename),
-            operation: operation
-        }
-        this._operations.push(operation)
-        return {
-            absolute: stage.absolute,
-            relative: stage.relative,
-            filename, flag, mode, encoding, hash
-        }
-    }
-
-    async writeFileRedux (filename, { flag = 'wx', mode = 438, encoding = 'utf8' } = {}) {
-        Journalist.Error.assert(flag == 'w' || flag == 'wx', 'INVALID_FLAG', { flag })
-        const options = { filename: null, flag, mode, encoding }
-        const tmpfile = path.resolve(this._absolute.write, String(this._tmpfile++))
-        const handle = await fs.open(tmpfile, 'wx')
-        return {
-            handle: handle,
-            commit: async () => {
-                await handle.sync()
-                await handle.close()
-                const staccato = new Staccato(fileSystem.createReadStream(tmpfile))
-                const checksum = crypto.createHash('sha1')
-                for await (const block of staccato) {
-                    checksum.update(block)
-                }
-                const hash = checksum.digest('hex').toLowerCase()
-                if (typeof filename == 'function') {
-                    filename = filename(hash)
-                }
-                filename = path.normalize(filename)
-                if ((filename in this._staged) && this._staged[filename].extant) {
-                    if (flag == 'wx') {
-                        throw this._error('EEXIST', 'open', filename)
-                    }
-                    if (this._staged[filename].directory) {
-                        throw this._error('EISDIR', 'open', filename)
-                    }
-                    this._unoperate(filename)
-                }
-                options.filename = filename
-                const temporary = path.join(this._absolute.staging, filename)
-                await fs.mkdir(path.dirname(temporary), { recursive: true })
-                await fs.rename(tmpfile, temporary)
-                const operation = { method: 'emplace', filename, hash, options }
-                const stage = this._staged[filename] = {
-                    extant: true,
-                    directory: false,
-                    relative: path.join(this._relative.staging, filename),
-                    absolute: path.join(this._absolute.staging, filename),
-                    operation: operation
-                }
-                this._operations.push(operation)
-                return {
-                    absolute: stage.absolute,
-                    relative: stage.relative,
-                    filename, flag, mode, encoding, hash
-                }
-            }
-        }
+    rmdir (filename) {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
+        const normalized = this._normalize(filename)
+        this._operations.push({ method: 'rmdir', normalized })
     }
     //
 
-    // Create a directory. The directory is created in the staging area. Files
-    // can then be written to the directory using the normal Node.js file system
-    // module. The entire directory is moved into primary directory usign
-    // `rename`. The `rename` operation is an atomic operation.
-    //
     // Accepts a `mode` option which defaults to `0x777`.
-    //
-    // Directory construction is always recursive. The full path to the
-    // directory is created if it does not already exist.
 
     //
-    async mkdir (dirname, { mode = 0o777 } = {}) {
-        const filename = path.normalize(dirname)
-        if ((filename in this._staged) && this._staged[filename].extant) {
-            throw this._error('EEXIST', 'mkdir', filename)
-        }
-        const options = { mode, recursive: true }
-        const temporary = path.join(this._absolute.staging, filename)
-        await fs.mkdir(temporary, { recursive: true })
-        const operation = { method: 'emplace', filename, hash: null, options }
-        const stage = this._staged[filename] = {
-            extant: true,
-            directory: true,
-            relative: path.join(this._relative.staging, filename),
-            absolute: path.join(this._absolute.staging, filename),
-            operation: operation
-        }
-        this._operations.push(operation)
-        return {
-            relative: stage.relative,
-            absolute: stage.absolute,
-            dirname, mode
-        }
+    mkdir (dirname, { mode = 0o777 } = {}) {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
+        const normalized = this._normalize(dirname)
+        this._operations.push({ method: 'mkdir', normalized, mode })
     }
 
-    partition () {
-        this._operations.push({ method: 'partition' })
+    rename (from, to) {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
+        const normalized = { from: this._normalize(from), to: this._normalize(to) }
+        this._operations.push({ method: 'rename', normalized })
     }
 
-    _error (code, f, path) {
-        const description = errno.code[code].description
-        const error = new Error(`${code}: ${description}, ${f} ${util.inspect(path)}`)
-        error.code = code
-        error.errno = -os.constants.errno[code]
-        error.path = path
-        Error.captureStackTrace(error, Journalist.prototype._error)
-        return error
-    }
+    async prepare () {
+        Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
+        const dir = { directory: {}, exists: true, staged: false }
 
-    // Rename a file.
-    //
-    // If the file is staged it will be renamed in the staging directory and
-    // will then be emplaced. The emplacement will occur at this point in the
-    // commit script, not at the point where the file was written using
-    // `writeFile`.
-    //
-    // If the file is not staged the rename will be applied to the primary
-    // directory during commit.
-    //
-    // This file operation will create any directory specified in the
-    // destination path in the primary directory.
-    //
-    // If the destination path includes directories, any directories that do not
-    // already exist in the primary directory will be created.
-    //
-    // Note that a staged file that has directories in its file path will not
-    // remove the directories. This leaves directories in the staging directory
-    // and can cause problems if you attempt to write a file to staging and one
-    // of these orphaned directories is in its place.
-    //
-    // *TODO* Maybe `rmdir` will run recursively in the staging directory
-    // regardless of whether or not there is a staging entry.
-
-    //
-    async rename (from, to) {
-        const relative = { from: path.normalize(from), to: path.normalize(to) }
-        // TODO Move of staged `rmdir` or `unlink`.
-        if (relative.from in this._staged) {
-            const absolute = {
-                from: path.join(this._absolute.staging, relative.from),
-                to: path.join(this._absolute.staging, relative.to)
+        function mk (filename, node) {
+            const code = node.directory == null ? 'NOT_A_FILE' : 'NOT_A_DIRECTORY'
+            const parts = filename.split(path.sep)
+            const file = parts.pop()
+            let iterator = dir
+            for (let i = 0; i < parts.length; i++) {
+                Journalist.Error.assert(iterator.directory != null, code)
+                iterator = iterator.directory[parts[i]]
+                Journalist.Error.assert(iterator != null && iterator.exists, 'PATH_DOES_NOT_EXIST', { filename })
             }
-            await fs.mkdir(path.dirname(absolute.to), { recursive: true })
-            await fs.rename(absolute.from, absolute.to)
-            const operation = this._unoperate(relative.from)
-            operation.filename = relative.to
-            this._operations.push(operation)
-            this._staged[relative.to] = {
-                extant: operation.extant,
-                directory: operation.directory,
-                operation: operation
+            const existing = iterator.directory[file]
+            Journalist.Error.assert(existing == null || ! existing.exists, code)
+            iterator.directory[file] = node
+        }
+
+        function rm (filename, type) {
+            const parts = filename.split(path.sep)
+            const file = parts.pop()
+            let iterator = dir
+            for (let i = 0; i < parts.length; i++) {
+                Journalist.Error.assert(iterator.directory != null, 'NOT_A_DIRECTORY')
+                iterator = iterator.directory[parts[i]]
             }
-        } else {
-            const operation = {
-                method: 'rename',
-                from: {
-                    relative: relative.from,
-                    absolute: path.join(this.directory, relative.from)
-                },
-                to: {
-                    relative: relative.to,
-                    absolute: path.join(this.directory, relative.to)
+            const existing = iterator.directory[file]
+            Journalist.Error.assert(existing != null && existing.exists, 'FILE_DOES_NOT_EXIST')
+            switch (type) {
+            case 'file':
+                Journalist.Error.assert(existing.directory == null, 'NOT_A_FILE')
+                brea
+            case 'directory':
+                Journalist.Error.assert(existing.directory != null, 'NOT_A_DIRECTORY')
+                break
+            }
+            const node = iterator.directory[file]
+            iterator.directory[file] = { directory: null, exists: false, staged: true }
+            return node
+        }
+
+        const load = async (filename) => {
+            const parts = filename.split(path.sep)
+            let iterator = dir
+            for (let i = 0, I = parts.length; iterator.exists && !iterator.staged && i < I; i++) {
+                const part = parts[i]
+                const child = iterator.directory[part]
+                if (child == null) {
+                    try {
+                        const filename = path.join(this.directory, parts.slice(0, i + 1).join(path.sep))
+                        const stat = await Journalist.Error.resolve(fs.stat(filename), 'IO_ERROR')
+                        if (stat.isDirectory()) {
+                            iterator = iterator.directory[part] = { directory: {}, exists: true, staged: false }
+                        } else {
+                            iterator = iterator.directory[part] = { directory: null, exists: true, staged: false  }
+                        }
+                    } catch (error) {
+                        rescue(error, [{ code: 'ENOENT' }])
+                        iterator = iterator.directory[part] = { directory: null, exists: false, staged: false }
+                    }
+                } else {
+                    iterator = child
                 }
             }
-            this._operations.push(operation)
-            this._staged[relative.to] = {
-                extant: true,
-                directory: (await fs.stat(path.join(this.directory, relative.from))).isDirectory(),
-                operation: operation
-            }
-            this._staged[relative.from] = {
-                extant: false,
-                directory: false,
-                operation: operation
-            }
         }
-    }
 
-    // Okay. Now I see. I wanted the commit to be light and easy and minimal, so
-    // that it could be written quickly and loaded quickly, but that is only
-    // necessary for the leaf. We really want a `Prepare` that will write files
-    // for branches instead of this thing that duplicates, but now I'm starting
-    // to feel better about the duplication.
-    //
-    // Seems like there should be some sort of prepare builder class, especially
-    // given that there is going to be emplacements followed by this prepare
-    // call, but I'm content to have that still be an array.
-
-    //
-    async prepare () {
-        const dir = await this._readdir()
-        const commit = dir.filter(file => /^commit\.[0-9a-f]+$/.test(file)).shift()
-        if (commit == null) {
-            return []
-        }
-        const writes = []
-        const operations = await this._load(commit)
-        // Start by deleting the commit script, once this runs we have to move
-        // forward through the entire commit.
-        await writes.push([ 'begin' ])
-        while (operations.length != 0) {
-            const operation = operations.shift()
+        for (const operation of this._operations) {
             switch (operation.method) {
             case 'messages': {
-                    if (operation.messages.length != 0) {
-                        writes.push([ 'messages', operation.messages ])
+                    if (operation.normalized != null) {
+                        await load(operation.normalized)
+                        rm(operation.normalized, 'file')
                     }
-                }
-                break
-            // This is the next commit in a series of commits, we write out the
-            // remaining operations into a new commit.
-            case 'partition': {
-                    // TODO Come back and think about this. You want this to be
-                    // garaunteed to execute, each time, so maybe you write out
-                    // and `end` and `begin` pair for the parition.
-                    //
-                    // For now let's do this as cheaply as possible.
-                    //
-                    // Okay, it works. We stage a commit file and move it into
-                    // place.
-                    const entries = operations.splice(0)
-                    const buffer = Buffer.from(entries.map(JSON.stringify).join('\n') + '\n')
-                    const hash = fnv(buffer)
-                    const file = `commit.${hash}`
-                    const absolute = path.join(this._absolute.staging, 'commit', file)
-                    await fs.mkdir(path.dirname(absolute), { recursive: true })
-                    await fs.writeFile(absolute, buffer)
-                    writes.push([
-                        'rename',
-                        path.join(this._relative.staging, 'commit', file),
-                        path.join(this._relative.commit, file),
-                        hash
-                    ])
-                }
-                break
-            case 'emplace': {
-                    const { page, hash, filename, options } = operation
-                    if (options.flag == 'w') {
-                        await this._prepare([ 'unlink', filename ])
-                    }
-                    writes.push([ 'rename', path.join(this._relative.staging, filename), filename, hash ])
-                }
-                break
-            case 'rename': {
-                    const { from, to } = operation
-                    const stat = await fs.stat(from.absolute)
-                    const hash = stat.isDirectory() ? null : fnv(await fs.readFile(from.absolute))
-                    writes.push([ 'rename', from.relative, to.relative, hash ])
-                }
-                break
-            case 'unlink': {
-                    writes.push([ 'unlink', operation.path ])
                 }
                 break
             case 'rmdir': {
-                    writes.push([ 'rmdir', operation.path ])
+                    await load(operation.normalized)
+                    rm(operation.normalized, 'directory')
+                }
+                break
+            case 'mkdir': {
+                    await load(operation.normalized)
+                    mk(operation.normalized, { directory: {}, exists: true, staged: true })
+                }
+                break
+            case 'rename': {
+                    await load(operation.normalized.from)
+                    await load(operation.normalized.to)
+                    mk(operation.normalized.to, rm(operation.normalized.from, null))
+                }
+                break
+            case 'unlink': {
+                    await load(operation.normalized)
+                    rm(operation.normalized, 'file')
                 }
                 break
             }
         }
-        await writes.push([ 'end' ])
-        return writes.map(write => {
-            return { prepare: () => this._prepare(write) }
-        })
+
+        const buffer = Buffer.from(this._operations.map(JSON.stringify).join('\n') + '\n')
+        const commitfile = path.join(this.tmp, 'intermediate')
+        await fs.writeFile(commitfile, buffer, { flags: 'as' })
+        await fs.rename(commitfile, path.join(this.tmp, `commit.${fnv(buffer)}.0.pending`))
+        await this._recover()
     }
 
-    async __commit (step, dir) {
-        const operation = (await this._load(step)).shift()
-        const method = operation.shift()
-        switch (method) {
-        case 'begin':
-            const commit = dir.filter(function (file) {
-                return /^commit\./.test(file)
-            }).shift()
-            await this._unlink(path.join(this._absolute.commit, commit))
-            break
+    async _operate (operation) {
+        async function _rescue (promise, pattern) {
+            try {
+                await promise
+            } catch (error) {
+                rescue(error, pattern)
+            }
+        }
+
+        switch (operation.method) {
         case 'messages': {
-                await this._write('messages', operation.shift())
+                this.messages = operation.messages
+                if (operation.normalized == null) {
+                    break
+                }
+            }
+            /* fall through */
+        case 'unlink': {
+                const absolute = path.join(this.directory, operation.normalized)
+                await _rescue(Journalist.Error.resolve(fs.unlink(absolute), 'IO_ERROR'), [ 1, 1, { code: 'ENOENT' } ])
             }
             break
         case 'rename': {
-                const from = path.join(this.directory, operation.shift())
-                const to = path.join(this.directory, operation.shift())
-                await fs.mkdir(path.dirname(to), { recursive: true })
-                // When replayed from failure we'll get `ENOENT`.
-                try {
-                    await fs.rename(from, to)
-                } catch (error) {
-                    rescue(error, [{ code: 'ENOENT' }])
-                }
-                const hash = { expected: operation.shift(), actual: null }
-                // **TODO** Streaming hash.
-                if (hash.expected == null) {
-                    const stat = await async function () {
-                        try {
-                            return await fs.stat(to)
-                        } catch (error) {
-                            throw new Journalist.Error('RENAME_NON_EXTANT', error)
-                        }
-                    } ()
-                    Journalist.Error.assert(stat.isDirectory(), 'RENAME_NOT_DIR', { from, to })
-                } else {
-                    const buffer = await fs.readFile(to)
-                    hash.actual = fnv(buffer)
-                    // TODO Is there a suitable UNIX exception?
-                    Journalist.Error.assert(hash.expected == hash.actual, 'RENAME_BAD_HASH', {
-                        ...hash, from, to
-                    })
-                }
+                const { normalized } = operation
+                const from = path.join(this.directory, normalized.from)
+                const to = path.join(this.directory, normalized.to)
+                await _rescue(Journalist.Error.resolve(fs.rename(from, to), 'IO_ERROR'), [ 1, 1, { code: 'ENOENT' } ])
             }
             break
-        case 'unlink':
-            await this._unlink(path.join(this.directory, operation.shift()))
+        case 'mkdir': {
+                const { normalized, mode } = operation
+                const absolute = path.join(this.directory, normalized)
+                await _rescue(Journalist.Error.resolve(fs.mkdir(absolute, { mode }), 'IO_ERROR'), [ 1, 1, { code: 'EEXIST' } ])
+            }
             break
-        case 'rmdir':
-            await fs.rmdir(path.join(this.directory, operation.shift()), { recursive: true })
-            break
-        case 'end':
+        case 'rmdir': {
+                const { normalized } = operation
+                const absolute = path.join(this.directory, normalized)
+                await _rescue(Journalist.Error.resolve(fs.rmdir(absolute), 'IO_ERROR'), [ 1, 1, { code: 'ENOENT' } ])
+            }
             break
         }
-        return method
+        return operation.method
     }
 
-    // Appears that prepared files are always going to be a decimal integer
-    // followed by a hexidecimal integer. Files for emplacement appear to have a
-    // hyphen in them.
+    async _advance (pending, index, length) {
+        const from = path.join(this.tmp, [ 'commit' ].concat(pending).join('.'))
+        if (index == length - 1) {
+            pending[2] = 'complete'
+        } else {
+            pending[1]++
+        }
+        const to = path.join(this.tmp, [ 'commit' ].concat(pending).join('.'))
+        await fs.rename(from, to)
+    }
+
+    async _load (parts) {
+        const body = await fs.readFile(path.resolve(this.tmp, [ 'commit' ].concat(parts).join('.')))
+        Journalist.Error.assert(fnv(body) == parts[0], 'COMMIT_CHECKSUM_INVALID')
+        return body.toString().split('\n').slice(0, -1)
+            .map(JSON.parse)
+            .map((operation, index) => ({ operation, index }))
+    }
+
+    async _recover () {
+        await fs.mkdir(this.tmp, { recursive: true })
+        const dir = await fs.readdir(this.tmp)
+        const isCommit = /^commit\.([0-9a-f]+)\.(\d+).(pending|complete)$/
+        const commits = dir
+            .map(file => isCommit.exec(file))
+            .filter($ => $ != null)
+            .map($ => [ $[1], +$[2], $[3] ])
+        const completes = commits.filter(commit => commit[2] == 'complete')
+        Journalist.Error.assert(completes.length < 2, 'MULTIPLE_COMPLETE_COMMITS')
+        const complete = completes.shift()
+        if (complete != null) {
+            this._operations[0].normalized = path.join(this._tmp, [ 'commit' ].concat(complete).join('.'))
+            const entries = await this._load(complete)
+            this.messages = entries[0].operation.messages
+        }
+        const pendings = commits.filter(commit => commit[2] == 'pending')
+        Journalist.Error.assert(pendings.length < 2, 'MULTIPLE_PENDING_COMMITS')
+        const pending = pendings.shift()
+        if (pending != null) {
+            const entries = await this._load(pending)
+            if (pending[1] != 0) {
+                Journalist.Error.assert(complete == null, 'OVERLAPPING_COMMITS')
+                this.messages = entries[0].operation.messages
+            }
+            this.state = Journalist.COMMITTING
+            this._script = entries.slice(pending[1]).map(step => {
+                return {
+                    operate: () => this._operate(step.operation),
+                    advance: () => this._advance(pending, step.index, entries.length)
+                }
+            })
+        }
+    }
     //
-    async commit () {
-        const dir = await this._readdir()
-        const steps = dir.filter(file => {
-            return /^\d+\.[0-9a-f]+$/.test(file)
-        }).map(file => {
-            const split = file.split('.')
-            return { index: +split[0], file: file, hash: split[1] }
-        }).sort((left, right) => left.index - right.index)
-        return steps.map(step => {
-            return {
-                commit: () => this.__commit(step.file, dir),
-                dispose: () => this._unlink(path.join(this._absolute.commit, step.file))
-            }
-        })
+
+    // Exposed for the sake of being able to debug recovery.
+
+    //
+    *[Symbol.iterator] () {
+        Journalist.Error.assert(this.state == Journalist.COMMITTING, 'UNPREPARED')
+        while (this._script.length != 0) {
+            yield this._script.shift()
+        }
     }
 
-    async messages () {
-        const dir = await this._readdir()
-        const messages = dir.filter(file => /^messages\.[0-9a-f]+$/.test(file)).shift()
-        if (messages != null) {
-            return await this._load(messages)
+    async commit () {
+        for (const operation of this) {
+            await operation.operate()
+            await operation.advance()
         }
-        return []
     }
 
     async dispose () {
-        await fs.rmdir(this._absolute.tmp, { recursive: true })
+        await fs.rmdir(this.tmp, { recursive: true })
     }
 }
 
-exports.create = async function (directory, { tmp = 'tmp', message = null } = {}) {
-    if (directory instanceof Journalist) {
-        const journalist = new Journalist(directory.directory, { tmp, message, perpetuated: true })
-        // **TODO** Assert that old journalist has cleaned up.
-        await journalist._propagate()
-        await journalist._create()
-        return journalist
-    }
-    const journalist = new Journalist(directory, { tmp, message })
-    await journalist._create()
-    return journalist
-}
-
-exports.prepare = async function (journalist) {
-    const operations = await journalist.prepare()
-    for (const operation of operations) {
-        await operation.prepare()
-    }
-    return operations.length
-}
-
-exports.commit = async function (journalist) {
-    const operations = await journalist.commit()
-    for (const operation of operations) {
-        await operation.commit()
-        await operation.dispose()
-    }
-    return operations.length
-}
-
-    async function list (directory) {
-        const listing = {}
-        for (const file of (await fs.readdir(directory))) {
-            const resolved = path.join(directory, file)
-            const stat = await fs.stat(resolved)
-            if (stat.isDirectory()) {
-                listing[file] = await list(resolved)
-            } else {
-                listing[file] = await fs.readFile(resolved, 'utf8')
-            }
-        }
-        return listing
-    }
+module.exports = Journalist

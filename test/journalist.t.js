@@ -1,9 +1,60 @@
-require('proof')(48, async okay => {
+require('proof')(17, async okay => {
     const fs = require('fs').promises
     const path = require('path')
 
     const Journalist = require('..')
+    //
 
+    // Journalist makes atomic changes to the structure and contents of a
+    // directory. It uses the atomicity of `rename` to move files into place. It
+    // flushes the new files to disk using `O_SYNC`. You can do this yourself in
+    // your program to ensure a single file gets put into place, but Journalist
+    // will ensure that multiple new files, renames, unlinks, rmdirs take place
+    // all together in order or not at all.
+
+    // Blah, blah... Don't have the mind to write, but keep thinking of
+    // admonishments.
+
+    // A common operation to ensure the safe replacement of a file is to write
+    // the new contents to a ...
+
+    // Journalist is for making a short series of changes.
+
+    // Journalist assumes that it is the only actor making changes to the files
+    // and directories you specify.
+
+
+    // There should be no race conditions in your program where Journalist has
+    // to rename a file before something deletes it. This should not be a hard
+    // requirement to fulfill and should require locking of an sort.
+
+    // Journal is supposed to run immediately after it is written. If there is a
+    // crash the journal is to be run immediately when the program restarts.
+
+    // If you where to tell a journalist to rename a directory, then you deleted
+    // the directory after the commit is written, journalist will fail.
+
+    // Journalist assumes that it is the only actor making changes to the
+    // structure of the target directory on the file system. This is how it
+    // ensures that the journaled file operations will complete. If you emplace
+    // a file, it will assert that the file does not already exist in the
+    // directory before recording your emplacement. If another actor writes a
+    // file to that location the garauntee that the journaled operations are
+    // valid is now void.
+
+    // This is reasonable. If you are managing a database directory that the
+    // user is also using as a tmp directory, problems occur eventually. You are
+    // supposed to use Journalist to manage a directory that is in the complete
+    // control of your application.
+
+    // Journalist is supposed to create an atomic action on a sensitive
+    // directory. It is not
+
+    // Although `rename` is atomic, file writes are not. If we have a system
+    // failure immediately after write a file then and rename we may find that
+    // the file is in place, but the contents are empty.
+
+    //
     const directory = path.join(__dirname, 'tmp')
 
     async function createCommit (options = {}) {
@@ -12,7 +63,12 @@ require('proof')(48, async okay => {
         return await Journalist.create(directory, options)
     }
 
+    async function reset () {
+        await fs.rmdir(directory, { recursive: true })
+    }
+
     async function create (directory, structure) {
+        await fs.mkdir(directory, { recursive: true })
         for (const name in structure) {
             const value = structure[name]
             const resolved = path.join(directory, name)
@@ -38,526 +94,196 @@ require('proof')(48, async okay => {
         }
         return listing
     }
-
     // TODO Add some files to dodge.
     // await fs.mkdir(path.join(directory, 'dir'))
 
     // Recover a commit directory with no commit.
+    /*
     {
-        const commit = await createCommit()
-        okay(await Journalist.prepare(commit), 0, 'no prepare')
-        okay(await Journalist.commit(commit), 0, 'no commit')
-        okay(await commit.messages(), [], 'no commit message')
-        await commit.dispose()
+        await reset()
+        const journalist = await Journalist.create(directory)
+        okay(await Journalist.commit(journalist), 0, 'no commit')
+        okay(await journalist.messages(), [], 'no commit message')
+        await journalist.dispose()
     }
+    */
 
     // Create a commit message.
     {
-        const commit = await createCommit()
-        commit.message({ hello: 'world' })
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        okay(await commit.messages(), [{ hello: 'world' }], 'messages recorded')
-        await commit.dispose()
-    }
-
-    // Perpetulate a commit.
-    {
-        const first = await createCommit()
-        first.message({ hello: 'world' })
-        await first.write()
-        await Journalist.prepare(first)
-        await Journalist.commit(first)
-        okay(await first.messages(), [{ hello: 'world' }], 'messages recorded')
-        const second = await Journalist.create(first)
-        okay(await second.messages(), [{ hello: 'world' }], 'messages perpetuated')
-        second.message({ hello: 'brian' })
-        await second.write()
-        await Journalist.prepare(second)
-        await Journalist.commit(second)
-        okay(await second.messages(), [{ hello: 'brian' }], 'messages overwritten')
-        await second.dispose()
-    }
-
-    // Create a file.
-    {
-        const commit = await createCommit()
-        const writer = await commit.writeFileRedux('hello/world.txt')
-        await writer.handle.write(Buffer.from('hello, world'))
-        const entry = await writer.commit()
-        okay(entry, {
-            filename: 'hello/world.txt',
-            absolute: path.join(directory, 'tmp/staging/hello/world.txt'),
-            relative: 'tmp/staging/hello/world.txt',
-            flag: 'wx', mode: 438, encoding: 'utf8',
-            hash: 'b7e23ec29af22b0b4e41da31e868d57226121c84'
-        }, 'write file')
-        okay(await commit.relative('hello/world.txt'), 'tmp/staging/hello/world.txt', 'staged relative')
-        okay(await commit.absolute('hello/world.txt'), path.join(directory, 'tmp/staging/hello/world.txt'), 'staged missing')
-        okay(await commit.relative('missing.txt'), null, 'missing relative')
-        okay(await commit.absolute('missing.txt'), null, 'missing relative')
-        // await commit.rename('hello/world.txt', 'hello/world.pdf')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { hello: { 'world.txt': 'hello, world' } }, 'write file ')
-    }
-
-    // Create a file with hash in name.
-    {
-        const commit = await createCommit()
-        const writer = await commit.writeFileRedux(hash => `one.${hash}.txt`)
-        writer.handle.write(Buffer.from('hello, world'))
-        const entry = await writer.commit()
-        okay(entry, {
-            filename: 'one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt',
-            relative: 'tmp/staging/one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt',
-            absolute: path.join(directory, 'tmp/staging/one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt'),
-            flag: 'wx', mode: 438, encoding: 'utf8',
-            hash: 'b7e23ec29af22b0b4e41da31e868d57226121c84'
-        }, 'entry for file with hash in filename')
-        // await commit.rename('hello/world.txt', 'hello/world.pdf')
-        await commit.write()
-        await Journalist.prepare(commit)
-        for (const operation of await commit.commit()) {
-            if (await operation.commit() == 'rename') {
-                break
-            }
-            await operation.dispose()
+        await reset()
+        {
+            const journalist = await Journalist.create(directory)
+            journalist.message({ hello: 'world' })
+            okay(journalist.messages, [], 'messages are not available until after prepare')
+            await journalist.prepare()
+            okay(journalist.messages, [], 'messages recorded after prepare')
+            await journalist.commit()
+            okay(journalist.messages, [{ hello: 'world' }], 'messages persist after commit')
         }
-        const recovery = await Journalist.create(directory)
-        okay(await Journalist.prepare(recovery), 0, 'no recovery necessary')
-        for (const operation of await recovery.commit()) {
-            await operation.commit()
-            await operation.dispose()
+        {
+            const journalist = await Journalist.create(directory)
+            okay(journalist.messages, [{ hello: 'world' }], 'messages are still around as long as you don\'t dispose')
+            await journalist.dispose()
         }
-        await recovery.dispose()
-        okay(await list(directory), {
-            'one.b7e23ec29af22b0b4e41da31e868d57226121c84.txt': 'hello, world'
-        }, 'write file with hash in filename')
     }
 
-    // Resolve a file name that is in the primary directory.
+    // `unlink` a file.
     {
-        const commit = await createCommit()
+        await reset()
         await create(directory, { hello: 'world' })
-        okay(await commit.relative('hello'), 'hello', 'relative in primary directory')
-        okay(await commit.absolute('hello'), path.join(directory, 'hello'), 'absolute in primary directory')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-    }
-
-    // Remove a file.
-    {
-        const commit = await createCommit()
-        await create(directory, { hello: 'world' })
-        await commit.unlink('hello')
-        await commit.write()
-        await Journalist.prepare(commit)
-        for (const operation of await commit.commit()) {
-            if (await operation.commit() == 'unlink') {
+        const journalist = await Journalist.create(directory)
+        journalist.unlink('hello')
+        await journalist.prepare()
+        for (const operation of journalist) {
+            if (await operation.operate() == 'unlink') {
                 break
             }
-            await operation.dispose()
+            await operation.advance()
         }
         const recovery = await Journalist.create(directory)
-        await Journalist.prepare(recovery)
-        const commits = await recovery.commit()
-        okay(commits.length, 2, 'recovery of unlink')
-        await Journalist.commit(recovery)
-        await recovery.dispose()
-        okay(await list(directory), {}, 'unlink primary')
-    }
-
-    // Remove a staged file.
-    {
-        const commit = await createCommit()
-        await create(directory, { hello: 'world' })
-        const writer = await commit.writeFileRedux('hello')
-        writer.handle.write(Buffer.from('world'))
-        await writer.commit()
-        await commit.unlink('hello')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), {}, 'unlink staged')
-    }
-
-    // Partition a commit.
-    {
-        const commit = await createCommit()
-        await commit.writeFile('one.txt', Buffer.from('one'))
-        commit.partition()
-        await commit.writeFile('two.txt', Buffer.from('two'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        const listing = await list(directory)
-        okay({
-            commit: { staging: listing.tmp.staging },
-            'one.txt': listing['one.txt']
-        }, {
-            commit: { staging: { commit: {}, 'two.txt': 'two' } },
-            'one.txt': 'one'
-        }, 'partial commit')
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), {
-            'one.txt': 'one',
-            'two.txt': 'two'
-        }, 'partitioned commit')
-    }
-
-    // Overwrite a staged file.
-    {
-        const commit = await createCommit()
-        const errors = []
-        const writer = await commit.writeFileRedux('one.txt')
-        writer.handle.write(Buffer.from('one'))
-        await writer.commit()
-        try {
-            const writer = await commit.writeFileRedux('one.txt',  { flag: 'wx' })
-            writer.handle.write(Buffer.from('two'))
-            await writer.commit()
-        } catch (error) {
-            errors.push(error.code)
-        }
-        await commit.writeFile('one.txt', Buffer.from('two'), { flag: 'w' })
-        okay(errors, [ 'EEXIST' ], 'overwrite existing')
-        // await commit.rename('hello/world.txt', 'hello/world.pdf')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { 'one.txt': 'two' }, 'overwite file in staging')
-    }
-
-    // Create a directory.
-    {
-        const commit = await createCommit()
-        const errors = []
-        const entry = await commit.mkdir('dir')
-        okay(entry, {
-            dirname: 'dir',
-            mode: 0o777,
-            relative: 'tmp/staging/dir',
-            absolute: path.join(directory, 'tmp/staging/dir')
-        }, 'mkdir entry')
-        try {
-            await commit.mkdir('dir')
-        } catch (error) {
-            errors.push(error.code, error.errno)
-        }
-        try {
-            await commit.writeFile('dir', Buffer.from('one'), { flag: 'w' })
-        } catch (error) {
-            errors.push(error.code, error.errno)
-        }
-        await fs.writeFile(path.join(await commit.absolute('dir'), 'one.txt'), 'one')
-        okay(errors, [ 'EEXIST', -17, 'EISDIR', -21 ], 'overwrite existing')
-        await commit.write()
-        await Journalist.prepare(commit)
-        for (const operation of await commit.commit()) {
-            if (await operation.commit() == 'rename') {
-                break
-            }
-            await operation.dispose()
-        }
-        const recovery = await Journalist.create(directory)
-        await Journalist.prepare(recovery)
-        for (const operation of await recovery.commit()) {
-            await operation.commit()
-            await operation.dispose()
+        const operations = [ ...recovery ]
+        okay(operations.length, 1, 'recovery of unlink')
+        for (const operation of operations) {
+            await operation.operate()
+            await operation.advance()
         }
         await recovery.dispose()
-        okay(await list(directory), { dir: { 'one.txt': 'one' } }, 'create directory')
+        okay(await list(directory), {}, 'unlink file')
     }
+    //
 
-    // Catch failure to create a directory.
+    // Create a directory with `mkdir`.
+    //
+    // This is not and cannot be recursive because recursive directory
+    // construction is not atomic. If you want to create a directory path in an
+    // atomic fashion, create the directory path in a staging directory using
+    // `fs.mkdir()`. You can then `rename` the directory with Journalist to to
+    // move it into place.
+
+    //
     {
-        const commit = await createCommit()
-        const entry = await commit.mkdir('dir')
-        await commit.write()
-        await Journalist.prepare(commit)
-        for (const operation of await commit.commit()) {
-            if (await operation.commit() == 'rename') {
-                break
-            }
-            await operation.dispose()
-        }
-        await fs.rmdir(path.join(directory, 'dir'))
-        const recovery = await Journalist.create(directory)
-        await Journalist.prepare(recovery)
-        const errors = []
-        try {
-            for (const operation of await recovery.commit()) {
-                await operation.commit()
-                await operation.dispose()
-            }
-        } catch (error) {
-            errors.push(error.code)
-        }
-        okay(errors, [ 'RENAME_NON_EXTANT' ], 'caught failure to create directory')
-        await recovery.dispose()
+        await reset()
+        await create(directory, {})
+        const journalist = await Journalist.create(directory)
+        journalist.mkdir('dir')
+        await journalist.prepare()
+        await journalist.commit()
+        await journalist.dispose()
+        okay(await list(directory), { dir: {} }, 'create directory')
     }
+    //
+
+    // Remove a directory with `rmdir`.
+    //
+    // This is not and cannot be recursive because a recursive directory removal
+    // is not atomic. If you want to recursively delete a directory in an atomic
+    // fashion, `rename` the with Journalist to move it to a staging area. You
+    // can then use `fs.rmdir` to delete recursively.
+
+    //
+    {
+        await reset()
+        await create(directory, { dir: {} })
+        const journalist = await Journalist.create(directory)
+        journalist.rmdir('dir')
+        await journalist.prepare()
+        await journalist.commit()
+        await journalist.dispose()
+        okay(await list(directory), {}, 'remove directory')
+    }
+    //
 
     // Rename a file.
+
+    //
     {
-        const commit = await createCommit()
-        const errors = []
+        await reset()
         await create(directory, { one: 'one' })
-        await commit.rename('one', 'two')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
+        const journalist = await Journalist.create(directory)
+        const errors = []
+        journalist.rename('one', 'two')
+        await journalist.prepare()
+        await journalist.commit()
+        await journalist.dispose()
         okay(await list(directory), { two: 'one' }, 'rename file in primary')
     }
+    //
 
-    // Rename a staged file.
+    // You must have paths created.
+
+    //
     {
-        const commit = await createCommit()
-        const errors = []
-        await create(directory, { one: 'one' })
-        await commit.writeFile('two', Buffer.from('two'))
-        await commit.rename('two', 'three')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'one', three: 'two' }, 'rename file in staging')
-    }
-
-    // TODO Really consider maybe not passing through if it is a staged
-    // directory created by `mkdir`.
-
-    // Remove a primary directory.
-    {
-        const commit = await createCommit()
-        const errors = []
-        await create(directory, { one: {}, two: {} })
-        await commit.rmdir('two', 'three')
-        await commit.write()
-        await Journalist.prepare(commit)
-        for (const operation of await commit.commit()) {
-            if (await operation.commit() == 'rmdir') {
-                break
+        await reset()
+        {
+            await create(directory, {})
+            const journalist = await Journalist.create(directory)
+            journalist.mkdir('one/two')
+            try {
+                await journalist.prepare()
+            } catch (error) {
+                console.log(error.stack)
+                okay(error.code, 'PATH_DOES_NOT_EXIST', 'cannot create a directory where a path does not exist')
             }
-            await operation.dispose()
         }
-        const recovery = await Journalist.create(directory)
-        await Journalist.prepare(recovery)
-        const commits = await recovery.commit()
-        okay(commits.length, 2, 'mkdir recovery')
-        for (const operation of commits) {
-            await operation.commit()
-            await operation.dispose()
+        await create(directory, { one: {} })
+        {
+            const journalist = await Journalist.create(directory)
+            journalist.mkdir('one/two')
+            await journalist.prepare()
+            await journalist.commit()
+            await journalist.dispose()
+            okay(await list(directory), { one: { two: {} } }, 'path does exist')
         }
-        await recovery.dispose()
-        okay(await list(directory), { one: {} }, 'remove directory from primary')
     }
+    //
 
-    // Remove a staged directory.
-    {
-        const commit = await createCommit()
-        const errors = []
-        await create(directory, { one: {}, two: {} })
-        await commit.mkdir('two')
-        await commit.rmdir('two')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: {} }, 'remove directory from staging')
-    }
+    // You can create the directory as part of your script.
 
-    // Replay a prepare.
+    //
     {
-        const commit = await createCommit()
-        const errors = []
-        await commit.writeFile('one', Buffer.from('one'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        const recovery = await Journalist.create(directory)
-        await Journalist.prepare(recovery)
-        const commits = await recovery.commit()
-        okay(commits.length, 3, 'replay prepare')
-        for (const operation of commits) {
-            await operation.commit()
-            await operation.dispose()
+        await reset()
+        {
+            await create(directory, {})
+            const journalist = await Journalist.create(directory)
+            journalist.mkdir('one')
+            journalist.mkdir('one/two')
+            await journalist.prepare()
+            await journalist.commit()
+            await journalist.dispose()
+            okay(await list(directory), { one: { two: {} } }, 'path does exist')
         }
-        await recovery.dispose()
-        okay(await list(directory), { one: 'one' }, 'replay a prepare')
     }
+    //
 
-    // Failed file write checksum.
+    // You can create the directory as part of your script.
+
+    //
     {
-        const errors = []
-        const commit = await createCommit()
-        await commit.writeFile('one', Buffer.from('one'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await fs.writeFile(path.join(directory, 'tmp', 'staging', 'one'), 'two')
-        try {
-            await Journalist.commit(commit)
-        } catch (error) {
-            errors.push(error.code)
-            console.log(error.stack)
+        await reset()
+        {
+            await create(directory, { log: { active: 'entry', next: '' } })
+            const journalist = await Journalist.create(directory)
+            journalist.rename('log/active', 'log/previous')
+            journalist.rename('log/next', 'log/active')
+            journalist.message('rotate')
+            await journalist.prepare()
+            await journalist.commit()
+            okay(await list(path.join(directory, 'log')), { active: '', previous: 'entry' }, 'first step')
         }
-        okay(errors, [ 'RENAME_BAD_HASH' ], 'failed write file checksum')
-    }
-
-    // Failed rename checksum.
-    {
-        const errors = []
-        const commit = await createCommit()
-        await create(directory, { one: 'one' })
-        await commit.rename('one', 'two')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await fs.writeFile(path.join(directory, 'one'), 'two')
-        try {
-            await Journalist.commit(commit)
-        } catch (error) {
-            errors.push(error.code)
-            console.log(error.stack)
+        {
+            const journalist = await Journalist.create(directory)
+            okay(journalist.messages, [ 'rotate' ], 'previous step')
+            journalist.message('shift')
+            journalist.unlink('log/previous')
+            await journalist.prepare()
+            await journalist.commit()
+            okay(await list(path.join(directory, 'log')), { active: '' }, 'second step')
         }
-        okay(errors, [ 'RENAME_BAD_HASH' ], 'failed rename checksum')
-    }
-
-    // Unlink a file and move a new file in place.
-    {
-        const commit = await createCommit()
-        await create(directory, { one: 'one' })
-        await commit.unlink('one')
-        await commit.writeFile('one', Buffer.from('two'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'two' }, 'unlink and then write to primary')
-    }
-
-    // Unlink a file and rename a file into place.
-    {
-        const commit = await createCommit()
-        await create(directory, { one: 'one', two: 'two' })
-        await commit.unlink('one')
-        await commit.rename('two', 'one')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'two' }, 'unlink and then rename to primary')
-    }
-
-    // Unlink a directory and rename a directory into place.
-    {
-        const commit = await createCommit()
-        await create(directory, { one: {}, two: { file: 'x' } })
-        await commit.rmdir('one')
-        await commit.rename('two', 'one')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: { file: 'x' } }, 'unlink and then rename to primary')
-    }
-
-    // Rename staged file twice.
-    {
-        const commit = await createCommit()
-        await commit.writeFile('one', Buffer.from('one'))
-        await commit.rename('one', 'two')
-        await commit.rename('two', 'three')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { three: 'one' }, 'rename staged file twice')
-    }
-
-    // Rename staged directroy twice.
-    {
-        const commit = await createCommit()
-        await commit.mkdir('one')
-        await commit.rename('one', 'two')
-        await commit.rename('two', 'three')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { three: {} }, 'rename staged directory twice')
-    }
-
-    // Unmake and remake a staged directory.
-    {
-        const commit = await createCommit()
-        await commit.mkdir('one')
-        await commit.rmdir('one')
-        await commit.mkdir('one')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: {} }, 'create staged directory twice')
-    }
-
-    // Write, unlink and write a staged file.
-    {
-        const commit = await createCommit()
-        await commit.writeFile('one', Buffer.from('one'))
-        await commit.unlink('one')
-        await commit.writeFile('one', Buffer.from('two'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'two' }, 'write wx staged file twice')
-    }
-
-    // Unlink a primary file and write file.
-    {
-        const commit = await createCommit()
-        await create(directory, { 'one': 'one' })
-        await commit.unlink('one')
-        await commit.writeFile('one', Buffer.from('two'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'two' }, 'unlink primary file and write')
-    }
-
-    // Write over staged renamed file source.
-    {
-        const commit = await createCommit()
-        await commit.writeFile('one', Buffer.from('two'))
-        await commit.rename('one', 'two')
-        await commit.writeFile('one', Buffer.from('one'))
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: 'one', two: 'two' }, 'write over staged renamed file source')
-    }
-
-    // Create directory over staged renamed directory source.
-    {
-        const commit = await createCommit()
-        await commit.mkdir('one')
-        await commit.rename('one', 'two')
-        await commit.mkdir('one')
-        await commit.write()
-        await Journalist.prepare(commit)
-        await Journalist.commit(commit)
-        await commit.dispose()
-        okay(await list(directory), { one: {}, two: {} }, 'mkdir over staged renamed file source')
+        {
+            const journalist = await Journalist.create(directory)
+            okay(journalist.messages, [ 'shift' ], 'final step')
+            await journalist.dispose()
+            okay(await list(path.join(directory, 'log')), { active: '' }, 'final step')
+        }
     }
 })
