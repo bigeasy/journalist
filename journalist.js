@@ -168,7 +168,7 @@ class Journalist {
             switch (type) {
             case 'file':
                 Journalist.Error.assert(existing.directory == null, 'NOT_A_FILE')
-                brea
+                break
             case 'directory':
                 Journalist.Error.assert(existing.directory != null, 'NOT_A_DIRECTORY')
                 break
