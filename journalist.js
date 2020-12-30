@@ -160,11 +160,11 @@ class Journalist {
             const file = parts.pop()
             let iterator = dir
             for (let i = 0; i < parts.length; i++) {
-                Journalist.Error.assert(iterator.directory != null, 'NOT_A_DIRECTORY')
+                Journalist.Error.assert(iterator.directory != null, 'NOT_A_DIRECTORY', { filename })
                 iterator = iterator.directory[parts[i]]
             }
             const existing = iterator.directory[file]
-            Journalist.Error.assert(existing != null && existing.exists, 'FILE_DOES_NOT_EXIST')
+            Journalist.Error.assert(existing != null && existing.exists, 'FILE_DOES_NOT_EXIST', { filename })
             switch (type) {
             case 'file':
                 Journalist.Error.assert(existing.directory == null, 'NOT_A_FILE')
