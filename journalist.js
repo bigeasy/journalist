@@ -238,7 +238,7 @@ class Journalist {
 
         const buffer = Buffer.from(this._operations.map(JSON.stringify).join('\n') + '\n')
         const commitfile = path.join(this.tmp, 'intermediate')
-        await fs.writeFile(commitfile, buffer, { flags: 'as' })
+        await fs.writeFile(commitfile, buffer, { flag: 'as' })
         await fs.rename(commitfile, path.join(this.tmp, `commit.${fnv(buffer)}.0.pending`))
         await this._recover()
     }
