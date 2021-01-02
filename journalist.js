@@ -7,9 +7,6 @@ const os = require('os')
 const util = require('util')
 const assert = require('assert')
 
-// Sensible `async`/`await` over Node.js streams.
-const Staccato = require('staccato/redux')
-
 // Mappings from `errno` to libuv error messages so we can duplicate them.
 const errno = require('errno')
 
