@@ -6,6 +6,8 @@ const path = require('path')
 const os = require('os')
 const util = require('util')
 const assert = require('assert')
+const Player = require('transcript/player')
+const Recorder = require('transcript/recorder')
 
 // Mappings from `errno` to libuv error messages so we can duplicate them.
 const errno = require('errno')
@@ -70,8 +72,10 @@ class Journalist {
         this.state = Journalist.COMPOSING
         this.messages = []
         this.directory = path.normalize(directory)
+        this._recorder = Recorder.create(fnv)
         Journalist.Error.assert(path.isAbsolute(this.directory), 'DIRECTORY_PATH_NOT_ABSOLUTE')
         this._tmp = this._normalize(tmp)
+        this._id = 0
         this.tmp = path.resolve(this.directory, this._tmp)
         Journalist.Error.assert(this.tmp.indexOf(this.directory) == 0, 'TMP_NOT_IN_DIRECTORY')
         this._operations = [{
@@ -100,9 +104,10 @@ class Journalist {
         return normalized
     }
 
-    message (message) {
+    message (...vargs) {
+        const buffers = [].concat(vargs)
         Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
-        this._operations[0].messages.push(message)
+        this._operations[0].messages.push.apply(this._operations[0].messages, buffers)
     }
 
     unlink (filename) {
@@ -233,10 +238,19 @@ class Journalist {
             }
         }
 
-        const buffer = Buffer.from(this._operations.map(JSON.stringify).join('\n') + '\n')
+        const messages = this._operations[0].messages.splice(0)
+        const entries = [[ [ Buffer.from(JSON.stringify(this._operations[0])) ].concat(messages) ]]
+        for (let i = 1, I = this._operations.length; i < I; i++) {
+            entries.push([[ Buffer.from(JSON.stringify(this._operations[i])) ]])
+        }
+        const buffers = []
+        for (const entry of entries) {
+            buffers.push((this._recorder)(entry))
+        }
+        const buffer = Buffer.concat(buffers)
         const commitfile = path.join(this.tmp, 'intermediate')
         await fs.writeFile(commitfile, buffer, { flag: 'as' })
-        await fs.rename(commitfile, path.join(this.tmp, `commit.${fnv(buffer)}.0.pending`))
+        await fs.rename(commitfile, path.join(this.tmp, `commit.${this._id}.0.pending`))
         await this._recover()
     }
 
@@ -298,20 +312,25 @@ class Journalist {
 
     async _load (parts) {
         const body = await fs.readFile(path.resolve(this.tmp, [ 'commit' ].concat(parts).join('.')))
-        Journalist.Error.assert(fnv(body) == parts[0], 'COMMIT_CHECKSUM_INVALID')
-        return body.toString().split('\n').slice(0, -1)
-            .map(JSON.parse)
-            .map((operation, index) => ({ operation, index }))
+        const player = new Player(fnv)
+        const entries = []
+        return player.split(body).map((entry, index) => {
+            const operation = JSON.parse(String(entry.parts.shift()))
+            if (operation.method == 'messages') {
+                operation.messages = entry.parts.splice(0)
+            }
+            return { operation, index }
+        })
     }
 
     async _recover () {
         await fs.mkdir(this.tmp, { recursive: true })
         const dir = await fs.readdir(this.tmp)
-        const isCommit = /^commit\.([0-9a-f]+)\.(\d+).(pending|complete)$/
+        const isCommit = /^commit\.(\d+)\.(\d+).(pending|complete)$/
         const commits = dir
             .map(file => isCommit.exec(file))
             .filter($ => $ != null)
-            .map($ => [ $[1], +$[2], $[3] ])
+            .map($ => [ +$[1], +$[2], $[3] ])
         const completes = commits.filter(commit => commit[2] == 'complete')
         Journalist.Error.assert(completes.length < 2, 'MULTIPLE_COMPLETE_COMMITS')
         const complete = completes.shift()
@@ -330,6 +349,7 @@ class Journalist {
                 this.messages = entries[0].operation.messages
             }
             this.state = Journalist.COMMITTING
+            this._id = commits[0] + 1
             this._script = entries.slice(pending[1]).map(step => {
                 return {
                     operate: () => this._operate(step.operation),

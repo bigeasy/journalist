@@ -113,16 +113,16 @@ require('proof')(17, async okay => {
         await reset()
         {
             const journalist = await Journalist.create(directory)
-            journalist.message({ hello: 'world' })
+            journalist.message(Buffer.from(JSON.stringify({ hello: 'world' })))
             okay(journalist.messages, [], 'messages are not available until after prepare')
             await journalist.prepare()
             okay(journalist.messages, [], 'messages recorded after prepare')
             await journalist.commit()
-            okay(journalist.messages, [{ hello: 'world' }], 'messages persist after commit')
+            okay(journalist.messages.map(buffer => JSON.parse(String(buffer))), [{ hello: 'world' }], 'messages persist after commit')
         }
         {
             const journalist = await Journalist.create(directory)
-            okay(journalist.messages, [{ hello: 'world' }], 'messages are still around as long as you don\'t dispose')
+            okay(journalist.messages.map(buffer => JSON.parse(String(buffer))), [{ hello: 'world' }], 'messages are still around as long as you don\'t dispose')
             await journalist.dispose()
         }
     }
@@ -265,15 +265,15 @@ require('proof')(17, async okay => {
             const journalist = await Journalist.create(directory)
             journalist.rename('log/active', 'log/previous')
             journalist.rename('log/next', 'log/active')
-            journalist.message('rotate')
+            journalist.message(Buffer.from('rotate'))
             await journalist.prepare()
             await journalist.commit()
             okay(await list(path.join(directory, 'log')), { active: '', previous: 'entry' }, 'first step')
         }
         {
             const journalist = await Journalist.create(directory)
-            okay(journalist.messages, [ 'rotate' ], 'previous step')
-            journalist.message('shift')
+            okay(journalist.messages.map(buffer => String(buffer)), [ 'rotate' ], 'previous step')
+            journalist.message(Buffer.from('shift'))
             journalist.unlink('log/previous')
             await journalist.prepare()
             await journalist.commit()
@@ -281,7 +281,7 @@ require('proof')(17, async okay => {
         }
         {
             const journalist = await Journalist.create(directory)
-            okay(journalist.messages, [ 'shift' ], 'final step')
+            okay(journalist.messages.map(buffer => String(buffer)), [ 'shift' ], 'final step')
             await journalist.dispose()
             okay(await list(path.join(directory, 'log')), { active: '' }, 'final step')
         }
