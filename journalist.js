@@ -104,8 +104,8 @@ class Journalist {
         return normalized
     }
 
-    message (...vargs) {
-        const buffers = [].concat(vargs)
+    message (message) {
+        const buffers = [].concat(message)
         Journalist.Error.assert(this.state == Journalist.COMPOSING, 'ALREAY_COMMITTED')
         this._operations[0].messages.push.apply(this._operations[0].messages, buffers)
     }
