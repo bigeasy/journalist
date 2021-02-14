@@ -57,12 +57,6 @@ require('proof')(17, async okay => {
     //
     const directory = path.join(__dirname, 'tmp')
 
-    async function createCommit (options = {}) {
-        await fs.rmdir(directory, { recursive: true })
-        // TODO Make this `async` so we can create the directory.
-        return await Journalist.create(directory, options)
-    }
-
     async function reset () {
         await fs.rmdir(directory, { recursive: true })
     }
