@@ -13,7 +13,7 @@ const Recorder = require('transcript/recorder')
 const errno = require('errno')
 
 // Detailed exceptions with nested stack traces.
-const Interrupt = require('interrupt')
+const { Interrupt } = require('interrupt')
 
 // A non-cryptographic hash to assert the validity of the contents of a file.
 const fnv = require('./fnv')
