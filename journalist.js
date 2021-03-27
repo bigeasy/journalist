@@ -9,6 +9,9 @@ const assert = require('assert')
 const Player = require('transcript/player')
 const Recorder = require('transcript/recorder')
 
+// Avoid deprecation warnings when using `rmdir` on v15.
+const rmrf = require('./rmrf')
+
 // Mappings from `errno` to libuv error messages so we can duplicate them.
 const errno = require('errno')
 
@@ -62,7 +65,13 @@ class Journalist {
         RENAME_NOT_DIR: 'emplaced or renamed directory is not a directory',
         RENAME_NON_EXTANT: 'emplaced or renamed file or directory does not exist',
         NOT_A_DIRECTORY: 'destination path includes a part that is not a directory',
-        PATH_DOES_NOT_EXIST: 'destination path does not exist'
+        PATH_DOES_NOT_EXIST: 'destination path does not exist',
+        MAKE_TMP: 'unable to make temporary directory',
+        READ_TMP: 'unable to read temporary directory',
+        RM_TMP: 'unable to rescursively delete temporary directory',
+        READ_COMMIT: 'unable to read commit file',
+        WRITE_COMMIT: 'unable to write commit file',
+        RENAME_COMMIT: 'unable to rename commit file'
     })
 
     static COMPOSING = Symbol('COMPOSING')
@@ -249,8 +258,9 @@ class Journalist {
         }
         const buffer = Buffer.concat(buffers)
         const commitfile = path.join(this.tmp, 'intermediate')
-        await fs.writeFile(commitfile, buffer, { flag: 'as' })
-        await fs.rename(commitfile, path.join(this.tmp, `commit.${this._id}.0.pending`))
+        await Journalist.Error.resolve(fs.writeFile(commitfile, buffer, { flag: 'as' }), 'WRITE_COMMIT', { file: commitfile, flags: { flag: 'as' } })
+        const to = `commit.${this._id}.0.pending`
+        await Journalist.Error.resolve(fs.rename(commitfile, path.join(this.tmp, to)), 'RENAME_COMMIT', { from: commitfile, to })
         await this._recover()
     }
 
@@ -307,11 +317,12 @@ class Journalist {
             pending[1]++
         }
         const to = path.join(this.tmp, [ 'commit' ].concat(pending).join('.'))
-        await fs.rename(from, to)
+        await Journalist.Error.resolve(fs.rename(from, to), 'RENAME_COMMIT', { from, to })
     }
 
     async _load (parts) {
-        const body = await fs.readFile(path.resolve(this.tmp, [ 'commit' ].concat(parts).join('.')))
+        const file = path.resolve(this.tmp, [ 'commit' ].concat(parts).join('.'))
+        const body = await Journalist.Error.resolve(fs.readFile(file), 'READ_COMMIT', { file })
         const player = new Player(fnv)
         const entries = []
         return player.split(body).map((entry, index) => {
@@ -324,8 +335,8 @@ class Journalist {
     }
 
     async _recover () {
-        await fs.mkdir(this.tmp, { recursive: true })
-        const dir = await fs.readdir(this.tmp)
+        await Journalist.Error.resolve(fs.mkdir(this.tmp, { recursive: true }), 'MAKE_TMP', { tmp: this.tmp })
+        const dir = await Journalist.Error.resolve(fs.readdir(this.tmp), 'READ_TMP', { tmp: this.tmp })
         const isCommit = /^commit\.(\d+)\.(\d+).(pending|complete)$/
         const commits = dir
             .map(file => isCommit.exec(file))
@@ -378,7 +389,7 @@ class Journalist {
     }
 
     async dispose () {
-        await fs.rmdir(this.tmp, { recursive: true })
+        await Journalist.Error.resolve(rmrf(process.version, fs, this.tmp), 'RM_TMP', { tmp: this.tmp })
     }
 }
 
