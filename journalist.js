@@ -1,6 +1,6 @@
 // Node.js API.
 const fs = require('fs').promises
-const fileSystem = require('fs')
+eonst fileSystem = require('fs')
 const crypto = require('crypto')
 const path = require('path')
 const os = require('os')
@@ -35,7 +35,7 @@ const rescue = require('rescue')
 // Once you successfully commit, if the commit fails due to a full disk it can
 // be resumed once you've made space on the disk and restarted your program.
 //
-// Journalist has resonable limitations because it is primarily an atomicity
+// Journalist has reasonable limitations because it is primarily an atomicity
 // utility and not a filesystem utility.
 //
 // Journalist operates on a specific directory and will not operate outside the
