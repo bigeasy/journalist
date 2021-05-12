@@ -1,6 +1,6 @@
 // Node.js API.
 const fs = require('fs').promises
-eonst fileSystem = require('fs')
+const fileSystem = require('fs')
 const crypto = require('crypto')
 const path = require('path')
 const os = require('os')
