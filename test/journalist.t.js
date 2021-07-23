@@ -56,9 +56,10 @@ require('proof')(17, async okay => {
 
     //
     const directory = path.join(__dirname, 'tmp')
+    const { coalesce } = require('extant')
 
     async function reset () {
-        await fs.rmdir(directory, { recursive: true })
+        await coalesce(fs.rm, fs.rmdir).call(fs, directory, { force: true, recursive: true })
     }
 
     async function create (directory, structure) {

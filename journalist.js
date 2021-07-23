@@ -8,9 +8,7 @@ const util = require('util')
 const assert = require('assert')
 const Player = require('transcript/player')
 const Recorder = require('transcript/recorder')
-
-// Avoid deprecation warnings when using `rmdir` on v15.
-const rmrf = require('./rmrf')
+const { coalesce } = require('extant')
 
 // Mappings from `errno` to libuv error messages so we can duplicate them.
 const errno = require('errno')
@@ -389,7 +387,7 @@ class Journalist {
     }
 
     async dispose () {
-        await Journalist.Error.resolve(rmrf(process.version, fs, this.tmp), 'RM_TMP', { tmp: this.tmp })
+        await Journalist.Error.resolve(coalesce(fs.rm, fs.rmdir).call(fs, this.tmp, { force: true, recursive: true }), 'RM_TMP', { tmp: this.tmp })
     }
 }
 
