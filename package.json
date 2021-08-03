@@ -1,6 +1,6 @@
 {
     "name":                 "journalist",
-    "version":              "0.1.28",
+    "version":              "0.1.29",
     "description":
 
       "Journaled file system operations that form a transaction.",
