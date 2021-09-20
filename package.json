@@ -21,7 +21,7 @@
     "dependencies":
     {
                             "errno":                        "1.0.0",
-                            "extant":                       "2.0.0-alpha.3",
+                            "extant":                       "2.0.0-alpha.4",
                             "hash.fnv":                     "^1.0.5",
                             "interrupt":                    "11.0.0-alpha.24",
                             "rescue":                       "7.0.0-alpha.18",
