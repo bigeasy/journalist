@@ -13,6 +13,7 @@
     "contributors":         [],
     "homepage":             "https://github.com/bigeasy/journalist",
     "bugs":                 "https://github.com/bigeasy/journalist/issues",
+    "license":              "MIT",
     "repository":
     {
                             "type": "git",
